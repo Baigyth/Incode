@@ -1,4 +1,4 @@
-﻿// (C) 2015-20 christian.schladetsch@gmail.com
+// (C) 2015-20 christian.schladetsch@gmail.com
 
 using System.Runtime.InteropServices;
 using AudioSwitcher.AudioApi.CoreAudio;
@@ -13,6 +13,7 @@ namespace Incode
     using System.Diagnostics;
     using System.Drawing;
     using System.IO;
+    using System.Threading;
     using System.Windows.Forms;
     using MouseKeyboardActivityMonitor;
     using MouseKeyboardActivityMonitor.WinApi;
@@ -103,7 +104,7 @@ namespace Incode
         private IKeyboardSimulator _keyboardOut;
         private bool _controlled; // true while we control all input and output
         private const float Frequency = 100.0f; // Hertz
-        private Timer _timer;
+        private System.Windows.Forms.Timer _timer;
         private float _tx, _ty; // the target mouse position
         private LowPass _mx = new LowPass(Frequency, 2000, 2.5f);
         private LowPass _my = new LowPass(Frequency, 2000, 2.5f);
@@ -165,6 +166,16 @@ namespace Incode
 
             // Auto-hide to tray once handle is ready
             this.Load += (s, e) => HideToTray();
+
+            // Warm up NAudio audio device to avoid first-use lag
+            ThreadPool.QueueUserWorkItem(_ => {
+                var warm = new NAudio.Wave.WaveOutEvent();
+                warm.Init(new NAudio.Wave.SilenceProvider(new NAudio.Wave.WaveFormat(44100, 1)));
+                warm.Play();
+                Thread.Sleep(200);
+                warm.Stop();
+                warm.Dispose();
+            });
         }
 
         void PlaySound(object sender, KeyEventArgs key) {
@@ -212,6 +223,9 @@ namespace Incode
                 _overrideKey = interruptKey;
             }
 
+            // Register movement keys for audio feedback (up/down/left/right)
+            // (called again after _keys is populated below)
+
             // If keymap is configured in Config.json, use it
             if (_config.Keymap != null && _config.Keymap.Count > 0)
             {
@@ -222,6 +236,7 @@ namespace Incode
                         _keys.Add(key, new Action(cmd));
                     }
                 }
+                RegisterAudioKeys();
                 return;
             }
 
@@ -241,6 +256,20 @@ namespace Incode
             _keys.Add(Keys.D1, new Action(Command.VolumeDown));
             _keys.Add(Keys.D2, new Action(Command.VolumeUp));
             _keys.Add(Keys.D3, new Action(Command.VolumeMute));
+
+            RegisterAudioKeys();
+        }
+
+        private void RegisterAudioKeys()
+        {
+            var freqs = new Dictionary<Keys, float>();
+            float[] tones = { 55f, 65.41f, 77.78f, 92.50f };
+            Command[] dirs = { Command.Up, Command.Left, Command.Down, Command.Right };
+            foreach (var kv in _keys)
+                for (int i = 0; i < dirs.Length; i++)
+                    if (kv.Value.Command == dirs[i])
+                        freqs[kv.Key] = tones[i];
+            _audio.RegisterKeys(freqs);
         }
 
         private void InstallHooks()
@@ -256,7 +285,7 @@ namespace Incode
             _keyboardIn.KeyDown += OnKeyDown;
             _keyboardIn.KeyUp += OnKeyUp;
 
-            _timer = new Timer {Interval = (int) (1000 / Frequency)};
+            _timer = new System.Windows.Forms.Timer {Interval = (int) (1000 / Frequency)};
             _timer.Tick += PerformCommands;
 
             _watch.Start();
@@ -353,8 +382,6 @@ namespace Incode
 
         public void OnKeyDown(object sender, KeyEventArgs e)
         {
-            // _audio.KeyDown(e);  // disabled: WaveOutEvent memory leak causes buzzing
-
             // We're inserting a text expansion. in this case, we get phony key downs.
             // From window's input system. ignore them.
             if (_inserting > 0)
@@ -408,6 +435,9 @@ namespace Incode
             }
 
             Eat(e);
+
+            if (_config.SoundEnabled)
+                _audio.StartSound(e.KeyCode);
 
             if (!_keys.TryGetValue(e.KeyCode, out var action))
                 return;
@@ -583,6 +613,9 @@ namespace Incode
 
             // Sentinel values are bad. I use one here to indicate that an action is not active.
             action.Started = DateTime.MinValue;
+
+            if (_config.SoundEnabled)
+                _audio.StopSound();
 
             switch (action.Command)
             {

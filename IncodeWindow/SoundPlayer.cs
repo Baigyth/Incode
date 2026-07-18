@@ -1,81 +1,70 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Windows.Forms;
 using NAudio.Wave;
 
 namespace IncodeWindow {
     internal class Audio {
-        private Dictionary<Keys, BufferedWaveProvider> _sounds = new Dictionary<Keys, BufferedWaveProvider>();
-        private const float SemiToneFactor = 1.05946309436f;
+        private WaveOutEvent _waveOut;
+        private readonly object _lock = new object();
+        private Dictionary<Keys, byte[]> _waveData = new Dictionary<Keys, byte[]>();
+        private const int SampleRate = 44100;
+        private const float Duration = 5f;
 
-        public Audio() {
-            GenerateSounds();
+        /// <summary>Pre-generate wave data for all registered keys.</summary>
+        public void RegisterKeys(Dictionary<Keys, float> map) {
+            var data = new Dictionary<Keys, byte[]>();
+            foreach (var kv in map)
+                data[kv.Key] = GenerateWave(kv.Value, Duration);
+            lock (_lock) { _waveData = data; }
         }
 
-        void GenerateSounds() {
-            Keys[] keys = new[] { Keys.A, Keys.S, Keys.D, Keys.F };
-
-            var frequency = 55.0f; // basw freqnecy of A1
-            var seconds = 0.300f;
-            var sampleRate = 44 * 1000;
-            for (var i = 0; i < keys.Length; i++) {
-                var bytes = GenerateWaveForm(keys, frequency, seconds, sampleRate, i);
-                var waveOut = new WaveOut();
-                waveOut.Init(bytes);
-                _sounds.Add(keys[i], GenerateWaveForm(keys, frequency, seconds, sampleRate, i));
-                Console.WriteLine($"Adding {waveOut} to {keys[i]}");
-                frequency *= SemiToneFactor;
+        public void StartSound(Keys key) {
+            byte[] data;
+            lock (_lock) {
+                if (!_waveData.TryGetValue(key, out data))
+                    return;
             }
+            var captured = data;
+            ThreadPool.QueueUserWorkItem(_ => {
+                lock (_lock) {
+                    StopInternal();
+                    var provider = new BufferedWaveProvider(new WaveFormat(SampleRate, 1)) {
+                        BufferLength = captured.Length
+                    };
+                    provider.AddSamples(captured, 0, captured.Length);
+                    _waveOut = new WaveOutEvent();
+                    _waveOut.Init(provider);
+                    _waveOut.Play();
+                }
+            });
         }
 
-        private BufferedWaveProvider GenerateWaveForm(Keys[] keys, float frequency, float seconds, int sampleRate, int i) {
-            var wave = new BufferedWaveProvider(new WaveFormat(sampleRate, 1)) {
-                BufferLength = (int)(sampleRate / seconds)
-            };
-            var bytes = GenerateSignWave(frequency, seconds, sampleRate);
-            wave.AddSamples(bytes, 0, bytes.Length);
-            return wave;
+        public void StopSound() {
+            ThreadPool.QueueUserWorkItem(_ => {
+                lock (_lock) { StopInternal(); }
+            });
         }
 
-        private byte[] GenerateSignWave(float frequency, float seconds, float sampleRate) {
-            int numSamples = (int)(sampleRate * seconds);
+        private void StopInternal() {
+            if (_waveOut == null) return;
+            try { _waveOut.Stop(); } catch { }
+            try { _waveOut.Dispose(); } catch { }
+            _waveOut = null;
+        }
+
+        private static byte[] GenerateWave(float frequency, float seconds) {
+            int numSamples = (int)(SampleRate * seconds);
             byte[] values = new byte[2 * numSamples];
-            double increment = 2.0 * Math.PI * frequency / sampleRate;
-            short amplitude = 16384; // 16-bit PCM amplitude for maximum volume
+            double increment = 2.0 * Math.PI * frequency / SampleRate;
+            short amplitude = 8000;
             for (int n = 0; n < numSamples; n++) {
-                short sampleValue = (short)(amplitude * Math.Sin(increment * n));
-                byte[] sampleBytes = BitConverter.GetBytes(sampleValue);
-
-                values[n * 2] = sampleBytes[0];         // Lower byte (little-endian)
-                values[n * 2 + 1] = sampleBytes[1];     // Upper byte (little-endianvalues[n]
+                short sample = (short)(amplitude * Math.Sin(increment * n));
+                values[n * 2] = (byte)(sample & 0xFF);
+                values[n * 2 + 1] = (byte)(sample >> 8);
             }
             return values;
         }
-
-        public void KeyDown(KeyEventArgs key) {
-            if (!_sounds.TryGetValue(key.KeyCode, out var source)) {
-                Console.WriteLine($"No audio found for {key.KeyCode}");
-                return;
-            }
-
-            Console.WriteLine($"Playing {source}");
-            WaveOutEvent waveOut = new WaveOutEvent();
-            waveOut.Init(source);
-            waveOut.Play();
-        //     waveOut.PlaybackStopped += WaveOut_PlaybackStopped1;
-        //     waveOut.PlaybackStopped += AddStopHandler(sender, args, waveOut, source);
-        }
-
-        private void WaveOut_PlaybackStopped1(object sender, StoppedEventArgs e) {
-            throw new NotImplementedException();
-        }
-
-        private void AddStopHandler(object sender, EventArgs e, WaveOutEvent waveOut, BufferedWaveProvider source) {
-        }
-
-        private void WaveOut_PlaybackStopped(object sender, StoppedEventArgs e) {
-            throw new NotImplementedException();
-        }
     }
 }
-

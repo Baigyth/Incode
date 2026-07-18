@@ -32,5 +32,8 @@
         /// Defaults to CapsLock when null/empty.
         /// </summary>
         public string InterruptKey;
+
+        /// <summary>Enable key-press sounds (A/S/D/F). Default false.</summary>
+        public bool SoundEnabled;
     }
 }

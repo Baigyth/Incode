@@ -26,6 +26,7 @@
     "VolumeMute": "D3"
   },
   "InterruptKey": "RControlKey",
+  "SoundEnabled": false,
   "Speed": 300.0,
   "Accel": 15.0,
   "ScrollScale": 30.0,
