@@ -19,5 +19,18 @@
         public int ScrollAmount;
         public float MouseFilterResonance;
         public float MouseFilterFrequency;
+
+        /// <summary>
+        /// Key binding overrides. Key = Command enum name, Value = Keys enum name.
+        /// Example: "Up": "W", "LeftDown": "Space", "ScrollUpAmount": "R"
+        /// When null or empty, defaults are used.
+        /// </summary>
+        public Dictionary<string, string> Keymap;
+
+        /// <summary>
+        /// The interrupt/override key that activates control mode. Keys enum name, e.g. "CapsLock", "RControlKey".
+        /// Defaults to CapsLock when null/empty.
+        /// </summary>
+        public string InterruptKey;
     }
 }

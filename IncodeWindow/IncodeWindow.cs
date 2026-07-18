@@ -113,19 +113,19 @@ namespace Incode
 
         // the key to press to activate the custom mode
         // works well for Wasd 88-key blank keyboards ;)
-        //private const Keys OverrideKey = Keys.OemBackslash;   // for WASD 88-key
-        private const Keys _overrideKey = Keys.RControlKey;
+        private Keys _overrideKey = Keys.RControlKey; // default, overridden by Config.InterruptKey
         private const string ConfigFileName = "Config.json";
         private int _inserting;
         private bool _mouseLeftDown;
         private bool _mouseRightDown;
 
         // enter abbreviation mode. press escape to leave
-        private const Keys _abbrStartKey = Keys.Q;
         private bool _abbrMode;
         private string _abbreviation;
         private ConfigData _config;
         private AbbreviationForm _abbrevWindow;
+        private NotifyIcon _notifyIcon;
+        private bool _isExiting;
 
         private void PlaySound(string name)
         {
@@ -147,16 +147,48 @@ namespace Incode
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             MinimizeBox = true;
+
+            // Set icon from embedded resource
+            Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+
+            // System tray
+            _notifyIcon = new NotifyIcon
+            {
+                Icon = Icon,
+                Text = "InCode",
+                Visible = true
+            };
+            _notifyIcon.ContextMenuStrip = new ContextMenuStrip();
+            _notifyIcon.ContextMenuStrip.Items.Add("Show", null, (s, e) => ShowWindow());
+            _notifyIcon.ContextMenuStrip.Items.Add("Exit", null, (s, e) => { _isExiting = true; Application.Exit(); });
+            _notifyIcon.DoubleClick += (s, e) => ShowWindow();
+
+            // Auto-hide to tray once handle is ready
+            this.Load += (s, e) => HideToTray();
         }
 
         void PlaySound(object sender, KeyEventArgs key) {
         }
 
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            if (!_isExiting && e.CloseReason == CloseReason.UserClosing)
+            {
+                e.Cancel = true;
+                HideToTray();
+                return;
+            }
+            base.OnFormClosing(e);
+        }
+
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
+            _notifyIcon?.Dispose();
+            _timer.Stop();
             _keyboardIn.Stop();
             _mouseIn.Stop();
 
+            _timer.Dispose();
             _keyboardIn.Dispose();
             _mouseIn.Dispose();
 
@@ -165,7 +197,35 @@ namespace Incode
 
         private void Configure()
         {
-            // clearly, this should be configured via a file, and the UI.
+            ReadConfig();
+            LoadKeyMap();
+        }
+
+        private void LoadKeyMap()
+        {
+            _keys.Clear();
+
+            // Load interrupt key override from config (before keymap, must be outside branches)
+            if (!string.IsNullOrEmpty(_config.InterruptKey)
+                && Enum.TryParse(_config.InterruptKey, out Keys interruptKey))
+            {
+                _overrideKey = interruptKey;
+            }
+
+            // If keymap is configured in Config.json, use it
+            if (_config.Keymap != null && _config.Keymap.Count > 0)
+            {
+                foreach (var kvp in _config.Keymap)
+                {
+                    if (Enum.TryParse(kvp.Key, out Command cmd) && Enum.TryParse(kvp.Value, out Keys key))
+                    {
+                        _keys.Add(key, new Action(cmd));
+                    }
+                }
+                return;
+            }
+
+            // Fallback to hardcoded defaults
             _keys.Add(Keys.Escape, new Action(Command.Escape));
             _keys.Add(Keys.W, new Action(Command.Up));
             _keys.Add(Keys.A, new Action(Command.Left));
@@ -176,11 +236,11 @@ namespace Incode
             _keys.Add(Keys.F, new Action(Command.RightDown));
             _keys.Add(Keys.Q, new Action(Command.Abbreviate));
             _keys.Add(Keys.Space, new Action(Command.LeftDown));
+            _keys.Add(Keys.R, new Action(Command.ScrollUpAmount));
+            _keys.Add(Keys.V, new Action(Command.ScrollDownAmount));
             _keys.Add(Keys.D1, new Action(Command.VolumeDown));
             _keys.Add(Keys.D2, new Action(Command.VolumeUp));
             _keys.Add(Keys.D3, new Action(Command.VolumeMute));
-
-            ReadConfig();
         }
 
         private void InstallHooks()
@@ -293,7 +353,7 @@ namespace Incode
 
         public void OnKeyDown(object sender, KeyEventArgs e)
         {
-            _audio.KeyDown(e);
+            // _audio.KeyDown(e);  // disabled: WaveOutEvent memory leak causes buzzing
 
             // We're inserting a text expansion. in this case, we get phony key downs.
             // From window's input system. ignore them.
@@ -349,43 +409,55 @@ namespace Incode
 
             Eat(e);
 
-            if (!_keys.ContainsKey(e.KeyCode))
+            if (!_keys.TryGetValue(e.KeyCode, out var action))
                 return;
 
-            // We get repeated key-down events - only set it the first time we get a key-down.
-            var action = _keys[e.KeyCode];
+            // One-shot commands: execute immediately, no Started tracking
+            switch (action.Command)
+            {
+                case Command.ScrollUpAmount:
+                    _mouseOut.VerticalScroll(ScrollAmount);
+                    return;
+                case Command.ScrollDownAmount:
+                    _mouseOut.VerticalScroll(-ScrollAmount);
+                    return;
+                case Command.VolumeDown:
+                    DeltaVolume(10);
+                    return;
+                case Command.VolumeUp:
+                    DeltaVolume(-10);
+                    return;
+                case Command.VolumeMute:
+                    return;
+            }
+
+            // Sustained commands: only set Started on first press
             if (action.Started != DateTime.MinValue)
                 return;
 
             action.Started = DateTime.Now;
 
-            switch (e.KeyCode)
+            switch (action.Command)
             {
-                case Keys.R:
-                    _mouseOut.VerticalScroll(ScrollAmount);
-                    break;
-                case Keys.V:
-                    _mouseOut.VerticalScroll(-ScrollAmount);
-                    break;
-                case Keys.G:
+                case Command.RightDown:
                     _mouseOut.RightButtonDown();
                     _mouseRightDown = true;
                     break;
-                case Keys.Space:
+                case Command.LeftDown:
                     _mouseOut.LeftButtonDown();
                     _mouseLeftDown = true;
                     break;
-                case Keys.D1:
-                    DeltaVolume(10);
-                    break;
-                case Keys.D2:
-                    DeltaVolume(-10);
-                    break;
-                case Keys.D3:
-                    //new CoreAudioController().DefaultPlaybackDevice.ToggleMute();
-                    break;
             }
         }
+
+        [DllImport("user32.dll")]
+        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll")]
+        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+        private const int GWL_EXSTYLE = -20;
+        private const int WS_EX_TOOLWINDOW = 0x80;
 
         [DllImport("user32.dll")]
         private static extern int GetForegroundWindow();
@@ -463,7 +535,7 @@ namespace Incode
             if (!Controlled)
                 return false;
 
-            if (key != _abbrStartKey)
+            if (!_keys.TryGetValue(key, out var action) || action.Command != Command.Abbreviate)
                 return false;
 
             Abbreviating = true;
@@ -504,21 +576,20 @@ namespace Incode
             if (!Controlled)
                 return;
 
-            if (!_keys.ContainsKey(e.KeyCode))
+            Eat(e);
+
+            if (!_keys.TryGetValue(e.KeyCode, out var action))
                 return;
 
             // Sentinel values are bad. I use one here to indicate that an action is not active.
-            _keys[e.KeyCode].Started = DateTime.MinValue;
+            action.Started = DateTime.MinValue;
 
-            Eat(e);
-
-            // TODO There is a better way!
-            switch (e.KeyCode)
+            switch (action.Command)
             {
-                case Keys.G:
+                case Command.RightDown:
                     _mouseOut.RightButtonUp();
                     break;
-                case Keys.Space:
+                case Command.LeftDown:
                     _mouseOut.LeftButtonUp();
                     break;
             }
@@ -642,7 +713,29 @@ namespace Incode
             ResetMouseFilter();
         }
 
+        private void ShowWindow()
+        {
+            int exStyle = GetWindowLong(Handle, GWL_EXSTYLE);
+            SetWindowLong(Handle, GWL_EXSTYLE, exStyle & ~WS_EX_TOOLWINDOW);
+
+            Show();
+            WindowState = FormWindowState.Normal;
+            ShowInTaskbar = true;
+            BringToFront();
+        }
+
+        private void HideToTray()
+        {
+            Hide();
+            ShowInTaskbar = false;
+
+            int exStyle = GetWindowLong(Handle, GWL_EXSTYLE);
+            SetWindowLong(Handle, GWL_EXSTYLE, exStyle | WS_EX_TOOLWINDOW);
+        }
+
         private void _exitToolStripMenuItem_Click(object sender, EventArgs e)
-            => Application.Exit();
+        {
+            HideToTray();
+        }
     }
 }

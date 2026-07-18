@@ -24,6 +24,8 @@
         VolumeUp,
         VolumeDown,
         VolumeMute,
-        Abbreviate
+        Abbreviate,
+        ScrollUpAmount,
+        ScrollDownAmount
     }
 }
