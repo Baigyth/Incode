@@ -13,7 +13,6 @@ namespace IncodeWindow
             InitializeComponent();
             FormBorderStyle = FormBorderStyle.None;
             _abbrList.Items.Clear();
-            KeyDown += parent.OnKeyDown;
         }
 
         public void Populate(Dictionary<string, string> fill)

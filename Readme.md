@@ -17,8 +17,7 @@ For instance, press and hold the `Interrupt` button, and:
 * `G` the right mouse button.
 * You can also double-click. I think the threshold is 300ms.
 * Double-pressing the `Interrupt` key centers the cursor on the main monitor.
-* There is some customisation available via a simple GUI, but to change the keys the only current way is to just edit the code.
-
+* There is some customisation available via a simple GUI, and to change the keys, just edit `Config.json`.
 
 ## Installation
 Just build the Visual Studio solution. This is very much *not* a cross-platform app so I didn't bother with CMake.
@@ -41,23 +40,41 @@ A typical config file would look like:
 {
   "Abbreviations":
   {
-    "g":  "christian.schladetsch@gmail.com",
-    "v": "christian@schladetsch.com",
-    "p":  "04712341234",
-    "gp": "+61(0)37234524",
-    "cc":  "1234123412341234",
-    "p1": "password",
-    "p2": "hunter11",
-    "p3": "not-telling",
-    "ad": "29 Fuddle St, East Place, Somewhere, Country, 3002"
+    "m1": "christian.schladetsch@gmail.com",
+    "m2": "christian@schladetsch.com",
+    "ph1": "0476561112",
+    "ph2": "+61 476561112",
+    "cc": "123456789012",
+    "p1": "hunter11",
+    "p2": "password$$"
   },
-  "Speed": 250,
-  "Accel": 12,
-  "ScrollScale": 0.5,
-  "ScrollAccel": 1.15,
-  "ScrollAmount": 3
+  "Keymap": {
+    "Up": "W",
+    "Down": "S",
+    "Left": "A",
+    "Right": "D",
+    "ScrollUp": "E",
+    "ScrollDown": "C",
+    "LeftDown": "Space",
+    "RightDown": "F",
+    "ScrollUpAmount": "R",
+    "ScrollDownAmount": "V",
+    "Abbreviate": "Q",
+    "Escape": "Escape",
+    "VolumeDown": "D1",
+    "VolumeUp": "D2",
+    "VolumeMute": "D3"
+  },
+  "InterruptKey": "RControlKey",
+  "SoundEnabled": false,
+  "Speed": 300.0,
+  "Accel": 15.0,
+  "ScrollScale": 30.0,
+  "ScrollAccel": 0.85,
+  "ScrollAmount": 3,
+  "MouseFilterResonance": 3.5,
+  "MouseFilterFrequency":  2500
 }
-
 ```
 
 ## Bugs or Requests

@@ -64,8 +64,11 @@ namespace Incode
 
                 if (value)
                     _controlStartTime = DateTime.Now;
-                else
+                else if (_mouseLeftDown)
+                {
                     _mouseOut.LeftButtonUp();
+                    _mouseLeftDown = false;
+                }
 
                 ResetMouseFilter();
 
@@ -161,7 +164,7 @@ namespace Incode
             };
             _notifyIcon.ContextMenuStrip = new ContextMenuStrip();
             _notifyIcon.ContextMenuStrip.Items.Add("Show", null, (s, e) => ShowWindow());
-            _notifyIcon.ContextMenuStrip.Items.Add("Exit", null, (s, e) => { _isExiting = true; Application.Exit(); });
+            _notifyIcon.ContextMenuStrip.Items.Add("Exit", null, (s, e) => { _isExiting = true; try { _keyboardIn?.Stop(); _mouseIn?.Stop(); } finally { Environment.Exit(0); } });
             _notifyIcon.DoubleClick += (s, e) => ShowWindow();
 
             // Auto-hide to tray once handle is ready
@@ -194,14 +197,16 @@ namespace Incode
 
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
-            _notifyIcon?.Dispose();
-            _timer.Stop();
-            _keyboardIn.Stop();
-            _mouseIn.Stop();
+            _keyboardIn?.Stop();
+            _mouseIn?.Stop();
 
-            _timer.Dispose();
-            _keyboardIn.Dispose();
-            _mouseIn.Dispose();
+            _notifyIcon.Visible = false;
+            _notifyIcon?.Dispose();
+            _timer?.Stop();
+
+            _timer?.Dispose();
+            _keyboardIn?.Dispose();
+            _mouseIn?.Dispose();
 
             base.OnFormClosed(e);
         }
@@ -298,6 +303,12 @@ namespace Incode
 
             var now = DateTime.Now;
             var earliest = ButtonsDown(DateTime.MaxValue);
+
+            if (earliest == DateTime.MaxValue)
+            {
+                MoveMouse();
+                return;
+            }
 
             // for mouse movement
             var millis = (float) (now - earliest).TotalMilliseconds;
@@ -427,8 +438,8 @@ namespace Incode
             {
                 if (e.KeyCode == _overrideKey)
                 {
-                    Eat(e);
                     StartControl();
+                    Eat(e);
                 }
 
                 return;
@@ -436,6 +447,13 @@ namespace Incode
 
             if (!_keys.TryGetValue(e.KeyCode, out var action))
             {
+                // Block override key repeats in control mode
+                if (Controlled && e.KeyCode == _overrideKey)
+                {
+                    Eat(e);
+                    return;
+                }
+
                 // Not an InCode command → let modifier keys pass through
                 if (IsModifierKey(e.KeyCode))
                     return;
@@ -590,6 +608,7 @@ namespace Incode
         {
             if (e.KeyCode == _overrideKey)
             {
+                Eat(e);
                 if (_mouseLeftDown)
                 {
                     _mouseOut.LeftButtonUp();
@@ -602,7 +621,6 @@ namespace Incode
                     _mouseRightDown = false;
                 }
 
-                Eat(e);
                 Controlled = false;
                 Trace("Not controlling");
                 _abbrevWindow?.Close();
@@ -638,6 +656,7 @@ namespace Incode
                     break;
                 case Command.LeftDown:
                     _mouseOut.LeftButtonUp();
+                    _mouseLeftDown = false;
                     break;
             }
         }
@@ -663,6 +682,9 @@ namespace Incode
         /// </summary>
         private void StartControl()
         {
+            foreach (var kv in _keys)
+                kv.Value.Started = DateTime.MinValue;
+
             var pos = Cursor.Position;
             _tx = pos.X;
             _ty = pos.Y;
