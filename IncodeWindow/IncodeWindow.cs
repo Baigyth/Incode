@@ -434,13 +434,20 @@ namespace Incode
                 return;
             }
 
+            if (!_keys.TryGetValue(e.KeyCode, out var action))
+            {
+                // Not an InCode command → let modifier keys pass through
+                if (IsModifierKey(e.KeyCode))
+                    return;
+
+                Eat(e);
+                return;
+            }
+
             Eat(e);
 
             if (_config.SoundEnabled)
                 _audio.StartSound(e.KeyCode);
-
-            if (!_keys.TryGetValue(e.KeyCode, out var action))
-                return;
 
             // One-shot commands: execute immediately, no Started tracking
             switch (action.Command)
@@ -606,10 +613,17 @@ namespace Incode
             if (!Controlled)
                 return;
 
-            Eat(e);
-
             if (!_keys.TryGetValue(e.KeyCode, out var action))
+            {
+                // Not an InCode command → let modifier keys pass through
+                if (IsModifierKey(e.KeyCode))
+                    return;
+
+                Eat(e);
                 return;
+            }
+
+            Eat(e);
 
             // Sentinel values are bad. I use one here to indicate that an action is not active.
             action.Started = DateTime.MinValue;
@@ -626,6 +640,16 @@ namespace Incode
                     _mouseOut.LeftButtonUp();
                     break;
             }
+        }
+
+        private static bool IsModifierKey(Keys key)
+        {
+            return key == Keys.LShiftKey
+                || key == Keys.RShiftKey
+                || key == Keys.LControlKey
+                || key == Keys.RControlKey
+                || key == Keys.LMenu
+                || key == Keys.RMenu;
         }
 
         private static void Eat(KeyEventArgs e)
