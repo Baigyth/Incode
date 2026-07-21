@@ -345,7 +345,16 @@ namespace Incode
             var nx = (int) (fx < 0 ? (fx - 0.5f) : (fx + 0.5f));
             var ny = (int) (fy < 0 ? (fy - 0.5f) : (fy + 0.5f));
 
-            Cursor.Position = new Point(nx, ny);
+            // Clamp to virtual screen bounds so cursor cannot escape
+            var bounds = SystemInformation.VirtualScreen;
+            var clampedX = Math.Max(bounds.Left, Math.Min(bounds.Right - 1, nx));
+            var clampedY = Math.Max(bounds.Top, Math.Min(bounds.Bottom - 1, ny));
+
+            // If clamped, sync target position so cursor responds immediately when direction changes
+            if (clampedX != nx) _tx = clampedX;
+            if (clampedY != ny) _ty = clampedY;
+
+            Cursor.Position = new Point(clampedX, clampedY);
         }
 
         private void PerformActions(DateTime now, float delta)
