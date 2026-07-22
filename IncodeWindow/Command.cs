@@ -19,12 +19,6 @@
         RightClick,
         LeftDown,
         RightDown,
-        InsertText,
-        Escape,
-        VolumeUp,
-        VolumeDown,
-        VolumeMute,
-        Abbreviate,
         ScrollUpAmount,
         ScrollDownAmount
     }

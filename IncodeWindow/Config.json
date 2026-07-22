@@ -1,13 +1,4 @@
 {
-  "Abbreviations": {
-    "m1": "christian.schladetsch@gmail.com",
-    "m2": "christian@schladetsch.com",
-    "ph1": "0476561112",
-    "ph2": "+61 476561112",
-    "cc": "123456789012",
-    "p1": "hunter11",
-    "p2": "password$$"
-  },
   "Keymap": {
     "Up": "W",
     "Down": "S",
@@ -19,14 +10,8 @@
     "RightDown": "F",
     "ScrollUpAmount": "R",
     "ScrollDownAmount": "V",
-    "Abbreviate": "Q",
-    "Escape": "Escape",
-    "VolumeDown": "D1",
-    "VolumeUp": "D2",
-    "VolumeMute": "D3"
   },
   "InterruptKey": "RControlKey",
-  "SoundEnabled": false,
   "Speed": 300.0,
   "Accel": 15.0,
   "ScrollScale": 30.0,

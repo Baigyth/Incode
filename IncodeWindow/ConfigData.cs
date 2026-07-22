@@ -11,7 +11,6 @@
     /// </summary>
     internal struct ConfigData
     {
-        public Dictionary<string, string> Abbreviations;
         public float Speed;
         public float Accel;
         public float ScrollScale;
@@ -33,7 +32,5 @@
         /// </summary>
         public string InterruptKey;
 
-        /// <summary>Enable key-press sounds (A/S/D/F). Default false.</summary>
-        public bool SoundEnabled;
     }
 }

@@ -1,14 +1,11 @@
 // (C) 2015-20 christian.schladetsch@gmail.com
 
 using System.Runtime.InteropServices;
-using AudioSwitcher.AudioApi.CoreAudio;
-using IncodeWindow;
 using LedCSharp;
 
 namespace Incode
 {
     using System;
-    using System.Media;
     using System.Collections.Generic;
     using System.Diagnostics;
     using System.Drawing;
@@ -36,22 +33,7 @@ namespace Incode
         public float FilterRes => _config.MouseFilterResonance;
         public float FilterFreq => _config.MouseFilterFrequency;
 
-        private Audio _audio = new Audio();
 
-        private bool Abbreviating
-        {
-            get => _abbrMode;
-            set
-            {
-                _abbrMode = value;
-                _abbreviation = "";
-                if (!value)
-                {
-                    _abbrevWindow?.Close();
-                    _abbrevWindow = null;
-                }
-            }
-        }
 
         // true if this app is interpreting and controlling input
         private bool Controlled
@@ -123,24 +105,9 @@ namespace Incode
         private bool _mouseLeftDown;
         private bool _mouseRightDown;
 
-        // enter abbreviation mode. press escape to leave
-        private bool _abbrMode;
-        private string _abbreviation;
         private ConfigData _config;
-        private AbbreviationForm _abbrevWindow;
         private NotifyIcon _notifyIcon;
         private bool _isExiting;
-
-        private void PlaySound(string name)
-        {
-            var docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-            var effects = Path.Combine(docs, "SoundBoard");
-            var sfx = Path.Combine(effects, name);
-            if (!File.Exists(sfx))
-                return;
-            var player = new SoundPlayer(sfx);
-            player.Play();
-        }
 
         public IncodeWindow()
         {
@@ -169,19 +136,6 @@ namespace Incode
 
             // Auto-hide to tray once handle is ready
             this.Load += (s, e) => HideToTray();
-
-            // Warm up NAudio audio device to avoid first-use lag
-            ThreadPool.QueueUserWorkItem(_ => {
-                var warm = new NAudio.Wave.WaveOutEvent();
-                warm.Init(new NAudio.Wave.SilenceProvider(new NAudio.Wave.WaveFormat(44100, 1)));
-                warm.Play();
-                Thread.Sleep(200);
-                warm.Stop();
-                warm.Dispose();
-            });
-        }
-
-        void PlaySound(object sender, KeyEventArgs key) {
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
@@ -228,9 +182,6 @@ namespace Incode
                 _overrideKey = interruptKey;
             }
 
-            // Register movement keys for audio feedback (up/down/left/right)
-            // (called again after _keys is populated below)
-
             // If keymap is configured in Config.json, use it
             if (_config.Keymap != null && _config.Keymap.Count > 0)
             {
@@ -241,12 +192,10 @@ namespace Incode
                         _keys.Add(key, new Action(cmd));
                     }
                 }
-                RegisterAudioKeys();
                 return;
             }
 
             // Fallback to hardcoded defaults
-            _keys.Add(Keys.Escape, new Action(Command.Escape));
             _keys.Add(Keys.W, new Action(Command.Up));
             _keys.Add(Keys.A, new Action(Command.Left));
             _keys.Add(Keys.S, new Action(Command.Down));
@@ -254,27 +203,9 @@ namespace Incode
             _keys.Add(Keys.E, new Action(Command.ScrollUp));
             _keys.Add(Keys.C, new Action(Command.ScrollDown));
             _keys.Add(Keys.F, new Action(Command.RightDown));
-            _keys.Add(Keys.Q, new Action(Command.Abbreviate));
             _keys.Add(Keys.Space, new Action(Command.LeftDown));
             _keys.Add(Keys.R, new Action(Command.ScrollUpAmount));
             _keys.Add(Keys.V, new Action(Command.ScrollDownAmount));
-            _keys.Add(Keys.D1, new Action(Command.VolumeDown));
-            _keys.Add(Keys.D2, new Action(Command.VolumeUp));
-            _keys.Add(Keys.D3, new Action(Command.VolumeMute));
-
-            RegisterAudioKeys();
-        }
-
-        private void RegisterAudioKeys()
-        {
-            var freqs = new Dictionary<Keys, float>();
-            float[] tones = { 55f, 65.41f, 77.78f, 92.50f };
-            Command[] dirs = { Command.Up, Command.Left, Command.Down, Command.Right };
-            foreach (var kv in _keys)
-                for (int i = 0; i < dirs.Length; i++)
-                    if (kv.Value.Command == dirs[i])
-                        freqs[kv.Key] = tones[i];
-            _audio.RegisterKeys(freqs);
         }
 
         private void InstallHooks()
@@ -394,12 +325,6 @@ namespace Incode
             }
         }
 
-        public void DeltaVolume(int amount)
-        {
-            //var device = new CoreAudioController().DefaultPlaybackDevice;
-            //device.Volume += amount;
-        }
-
         public void OnKeyDown(object sender, KeyEventArgs e)
         {
             // We're inserting a text expansion. in this case, we get phony key downs.
@@ -407,39 +332,6 @@ namespace Incode
             if (_inserting > 0)
             {
                 _inserting--;
-                return;
-            }
-
-            // If we're in the middle of an abbreviation, stop it.
-            if (e.KeyCode == Keys.Escape && Abbreviating)
-            {
-                Abbreviating = false;
-                Eat(e);
-                return;
-            }
-
-            switch (CheckCompleteAbbreviation(e))
-            {
-                case AbbrevResult.Matching:
-                    PlaySound("MacroCorrect.wav");
-                    return;
-                case AbbrevResult.NoMatch:
-                    PlaySound("MacroFailed.wav");
-                    return;
-                case AbbrevResult.None:
-                    //PlaySound("MacroFailed.wav");
-                    break;
-                case AbbrevResult.Matched:
-                    PlaySound("MacroSuccess.wav");
-                    return;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
-
-            if (TestAbbreviationStart(e.KeyCode))
-            {
-                ShowAbbreviations();
-                Eat(e);
                 return;
             }
 
@@ -473,9 +365,6 @@ namespace Incode
 
             Eat(e);
 
-            if (_config.SoundEnabled)
-                _audio.StartSound(e.KeyCode);
-
             // One-shot commands: execute immediately, no Started tracking
             switch (action.Command)
             {
@@ -484,14 +373,6 @@ namespace Incode
                     return;
                 case Command.ScrollDownAmount:
                     _mouseOut.VerticalScroll(-ScrollAmount);
-                    return;
-                case Command.VolumeDown:
-                    DeltaVolume(10);
-                    return;
-                case Command.VolumeUp:
-                    DeltaVolume(-10);
-                    return;
-                case Command.VolumeMute:
                     return;
             }
 
@@ -523,93 +404,6 @@ namespace Incode
         private const int GWL_EXSTYLE = -20;
         private const int WS_EX_TOOLWINDOW = 0x80;
 
-        [DllImport("user32.dll")]
-        private static extern int GetForegroundWindow();
-
-        [DllImport("user32.dll")]
-        private static extern bool SetForegroundWindow(int hwnd);
-
-        private void ShowAbbreviations()
-        {
-            // Need to show a window of available abbreviations, but want all subsequent input to
-            // be sent to current (native) control.
-            var current = GetForegroundWindow();
-            var cp = Cursor.Position;
-            _abbrevWindow?.Close();
-            _abbrevWindow = new AbbreviationForm(this) { Location = new Point(cp.X + 20, cp.Y - 20) };
-            _abbrevWindow.Populate(_config.Abbreviations);
-            _abbrevWindow.Show();
-            SetForegroundWindow(current);
-        }
-
-        private AbbrevResult CheckCompleteAbbreviation(KeyEventArgs e)
-        {
-            if (!Abbreviating)
-                return AbbrevResult.None;
-
-            // Append char from keycode.
-            _abbreviation += new KeysConverter().ConvertToString(e.KeyData)?.ToLower();
-
-            // Eat the part of the abbreviation, even if it fails.
-            Eat(e);
-
-            // Check for an abbreviation being completed.
-            foreach (var kv in _config.Abbreviations)
-            {
-                var test = CheckAbbrev(kv.Key);
-                switch (test)
-                {
-                    case AbbrevResult.Matching:
-                        Trace($"Prefix {kv.Key} matches so far");
-                        return test;
-
-                    case AbbrevResult.Matched:
-                        Trace($"Inserting: {kv.Key} -> {kv.Value}");
-                        _inserting = kv.Value.Length;
-
-                        _keyboardOut.TextEntry(kv.Value);
-                        Abbreviating = false;
-                        return test;
-                }
-            }
-
-            Trace($"No abbrev found for {_abbreviation}");
-            Abbreviating = false;
-
-            return AbbrevResult.NoMatch;
-        }
-
-        private AbbrevResult CheckAbbrev(string key)
-        {
-            if (_abbreviation.ToLower() == key)
-                return AbbrevResult.Matched;
-            return key.StartsWith(_abbreviation) ? AbbrevResult.Matching : AbbrevResult.NoMatch;
-        }
-
-        /// <summary>
-        /// Return true if we have just entered abbreviation mode
-        /// </summary>
-        /// <param name="key"></param>
-        /// <returns></returns>
-        private bool TestAbbreviationStart(Keys key)
-        {
-            if (Abbreviating)
-                return true;
-
-            if (!Controlled)
-                return false;
-
-            if (!_keys.TryGetValue(key, out var action) || action.Command != Command.Abbreviate)
-                return false;
-
-            Abbreviating = true;
-
-            Trace("Entering abbreviation mode");
-            PlaySound("MacroStart.wav");
-
-            return true;
-        }
-
         private static void Trace(string fmt, params object[] args)
             => Debug.WriteLine(fmt, args);
 
@@ -632,8 +426,6 @@ namespace Incode
 
                 Controlled = false;
                 Trace("Not controlling");
-                _abbrevWindow?.Close();
-                Abbreviating = false;
                 return;
             }
 
@@ -655,8 +447,6 @@ namespace Incode
             // Sentinel values are bad. I use one here to indicate that an action is not active.
             action.Started = DateTime.MinValue;
 
-            if (_config.SoundEnabled)
-                _audio.StopSound();
 
             switch (action.Command)
             {

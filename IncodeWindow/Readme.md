@@ -3,7 +3,7 @@
 
 Custom input system for keyboard and mouse for Windows.
 
-This application allows the user to control the mouse and other systems such as cursor and scrolling using a minimal set of keys - without actually using the mouse. It also allows for the use of abbreviations. Yes, there are other tools that do this and better but hey.
+This application allows the user to control the mouse and other systems such as cursor and scrolling using a minimal set of keys - without actually using the mouse.
 
 ## Usage
 Hold an 'Interrupt' button - By default the Right-Control key - and then use the rest of the keyboard to send custom input.
@@ -43,44 +43,19 @@ This project uses submodules, so you have to include them too:
 ```bash
 $ git submodule init --recursive
 ```
-
-## Abbreviations
-Enter abbreviation mode with `Interrupt`-Q (typically Capslock-Q). Then you can insert any text as mapped in the config file.
-
-For instance, my email address is `christian@schladetsch.com`. I end up typing that a *lot*. Now I can enter it with `Interrupt`-Qg.
-
-The `g` is the abbreviation stored in the Json file. I've added a bunch of things I use a lot, like passwords etc. Obviously you'll have to make your own Config.json in the same folder as the IncodeWindow.exe executable.
-
-When you enter abbreviation mode, a popup appears showing all your abbreviations. Note that you need to still hold down the `Interrupt` key to complete the abbreviation.
-
 ## Json Config
 The configuration is stored in Config.json, in the same folder as the app.
 
 A typical config file would look like:
-A
 
 ```json
-A
 {
-  "Abbreviations":
-  {
-    "g":  "christian.schladetsch@gmail.com",
-    "v": "christian@schladetsch.com",
-    "p":  "04712341234",
-    "gp": "+61(0)37234524",
-    "cc":  "1234123412341234",
-    "p1": "password",
-    "p2": "hunter11",
-    "p3": "not-telling",
-    "ad": "29 Fuddle St, East Place, Somewhere, Country, 3002"
-  },
   "Speed": 250,
   "Accel": 12,
   "ScrollScale": 0.5,
   "ScrollAccel": 1.15,
   "ScrollAmount": 3
 }
-
 ```
 
 ## Bugs
