@@ -132,7 +132,7 @@ namespace Incode
             };
             _notifyIcon.ContextMenuStrip = new ContextMenuStrip();
             _notifyIcon.ContextMenuStrip.Items.Add("Show", null, (s, e) => ShowWindow());
-            _notifyIcon.ContextMenuStrip.Items.Add("Exit", null, (s, e) => { _isExiting = true; try { _keyboardIn?.Stop(); _mouseIn?.Stop(); } finally { Environment.Exit(0); } });
+            _notifyIcon.ContextMenuStrip.Items.Add("Exit", null, (s, e) => { _isExiting = true; _keyboardIn?.Stop(); _mouseIn?.Stop(); Application.Exit(); });
             _notifyIcon.DoubleClick += (s, e) => ShowWindow();
 
             // Auto-hide to tray once handle is ready
