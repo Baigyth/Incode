@@ -36,10 +36,12 @@
             this.exitToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.label1 = new System.Windows.Forms.Label();
             this.label2 = new System.Windows.Forms.Label();
+            this.label8 = new System.Windows.Forms.Label();
             this.label3 = new System.Windows.Forms.Label();
             this.label4 = new System.Windows.Forms.Label();
             this._speedText = new System.Windows.Forms.TextBox();
             this._accelText = new System.Windows.Forms.TextBox();
+            this._accelDelayText = new System.Windows.Forms.TextBox();
             this._scrollScaleText = new System.Windows.Forms.TextBox();
             this._scrollAccelText = new System.Windows.Forms.TextBox();
             this._scrollAmount = new System.Windows.Forms.TextBox();
@@ -113,10 +115,19 @@
             this.label2.TabIndex = 2;
             this.label2.Text = "Accel";
             // 
+            // label8
+            // 
+            this.label8.AutoSize = true;
+            this.label8.Location = new System.Drawing.Point(13, 81);
+            this.label8.Name = "label8";
+            this.label8.Size = new System.Drawing.Size(62, 13);
+            this.label8.TabIndex = 2;
+            this.label8.Text = "AccelDelay";
+            // 
             // label3
             // 
             this.label3.AutoSize = true;
-            this.label3.Location = new System.Drawing.Point(13, 84);
+            this.label3.Location = new System.Drawing.Point(13, 110);
             this.label3.Name = "label3";
             this.label3.Size = new System.Drawing.Size(60, 13);
             this.label3.TabIndex = 2;
@@ -125,7 +136,7 @@
             // label4
             // 
             this.label4.AutoSize = true;
-            this.label4.Location = new System.Drawing.Point(13, 108);
+            this.label4.Location = new System.Drawing.Point(13, 134);
             this.label4.Name = "label4";
             this.label4.Size = new System.Drawing.Size(60, 13);
             this.label4.TabIndex = 2;
@@ -147,9 +158,17 @@
             this._accelText.TabIndex = 2;
             this._accelText.Leave += new System.EventHandler(this._accelText_Leave);
             // 
+            // _accelDelayText
+            // 
+            this._accelDelayText.Location = new System.Drawing.Point(79, 78);
+            this._accelDelayText.Name = "_accelDelayText";
+            this._accelDelayText.Size = new System.Drawing.Size(78, 20);
+            this._accelDelayText.TabIndex = 2;
+            this._accelDelayText.Leave += new System.EventHandler(this._accelDelayText_Leave);
+            // 
             // _scrollScaleText
             // 
-            this._scrollScaleText.Location = new System.Drawing.Point(79, 81);
+            this._scrollScaleText.Location = new System.Drawing.Point(79, 107);
             this._scrollScaleText.Name = "_scrollScaleText";
             this._scrollScaleText.Size = new System.Drawing.Size(78, 20);
             this._scrollScaleText.TabIndex = 3;
@@ -157,7 +176,7 @@
             // 
             // _scrollAccelText
             // 
-            this._scrollAccelText.Location = new System.Drawing.Point(79, 106);
+            this._scrollAccelText.Location = new System.Drawing.Point(79, 132);
             this._scrollAccelText.Name = "_scrollAccelText";
             this._scrollAccelText.Size = new System.Drawing.Size(78, 20);
             this._scrollAccelText.TabIndex = 4;
@@ -165,7 +184,7 @@
             // 
             // _scrollAmount
             // 
-            this._scrollAmount.Location = new System.Drawing.Point(79, 131);
+            this._scrollAmount.Location = new System.Drawing.Point(79, 157);
             this._scrollAmount.Name = "_scrollAmount";
             this._scrollAmount.Size = new System.Drawing.Size(78, 20);
             this._scrollAmount.TabIndex = 6;
@@ -174,7 +193,7 @@
             // label5
             // 
             this.label5.AutoSize = true;
-            this.label5.Location = new System.Drawing.Point(13, 133);
+            this.label5.Location = new System.Drawing.Point(13, 159);
             this.label5.Name = "label5";
             this.label5.Size = new System.Drawing.Size(69, 13);
             this.label5.TabIndex = 5;
@@ -182,7 +201,7 @@
             // 
             // _filterFreq
             // 
-            this._filterFreq.Location = new System.Drawing.Point(78, 158);
+            this._filterFreq.Location = new System.Drawing.Point(78, 184);
             this._filterFreq.Name = "_filterFreq";
             this._filterFreq.Size = new System.Drawing.Size(78, 20);
             this._filterFreq.TabIndex = 8;
@@ -191,7 +210,7 @@
             // label6
             // 
             this.label6.AutoSize = true;
-            this.label6.Location = new System.Drawing.Point(12, 160);
+            this.label6.Location = new System.Drawing.Point(12, 186);
             this.label6.Name = "label6";
             this.label6.Size = new System.Drawing.Size(50, 13);
             this.label6.TabIndex = 7;
@@ -199,7 +218,7 @@
             // 
             // _filterRes
             // 
-            this._filterRes.Location = new System.Drawing.Point(102, 185);
+            this._filterRes.Location = new System.Drawing.Point(102, 211);
             this._filterRes.Name = "_filterRes";
             this._filterRes.Size = new System.Drawing.Size(54, 20);
             this._filterRes.TabIndex = 10;
@@ -208,7 +227,7 @@
             // label7
             // 
             this.label7.AutoSize = true;
-            this.label7.Location = new System.Drawing.Point(12, 187);
+            this.label7.Location = new System.Drawing.Point(12, 213);
             this.label7.Name = "label7";
             this.label7.Size = new System.Drawing.Size(84, 13);
             this.label7.TabIndex = 9;
@@ -218,7 +237,7 @@
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(220, 236);
+            this.ClientSize = new System.Drawing.Size(220, 262);
             this.Controls.Add(this._filterRes);
             this.Controls.Add(this.label7);
             this.Controls.Add(this._filterFreq);
@@ -227,9 +246,11 @@
             this.Controls.Add(this.label5);
             this.Controls.Add(this._scrollAccelText);
             this.Controls.Add(this._scrollScaleText);
+            this.Controls.Add(this._accelDelayText);
             this.Controls.Add(this._accelText);
             this.Controls.Add(this._speedText);
             this.Controls.Add(this.label4);
+            this.Controls.Add(this.label8);
             this.Controls.Add(this.label3);
             this.Controls.Add(this.label2);
             this.Controls.Add(this.label1);
@@ -255,7 +276,8 @@
 		private System.Windows.Forms.TextBox _scrollAccelText;
 		private System.Windows.Forms.TextBox _scrollAmount;
 		private System.Windows.Forms.TextBox _scrollScaleText;
-		private System.Windows.Forms.TextBox _speedText;
+        private System.Windows.Forms.TextBox _speedText;
+        private System.Windows.Forms.TextBox _accelDelayText;
 		private System.Windows.Forms.ToolStripMenuItem appToolStripMenuItem;
 		private System.Windows.Forms.ToolStripMenuItem exitToolStripMenuItem;
 		private System.Windows.Forms.Label label1;
@@ -263,6 +285,7 @@
 		private System.Windows.Forms.Label label3;
 		private System.Windows.Forms.Label label4;
 		private System.Windows.Forms.Label label5;
+		private System.Windows.Forms.Label label8;
 		private System.Windows.Forms.MenuStrip menuStrip1;
 		private System.Windows.Forms.StatusStrip statusStrip1;
 		private System.Windows.Forms.ToolStripStatusLabel toolStripStatusLabel1;

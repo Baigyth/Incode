@@ -27,6 +27,7 @@ namespace Incode
     {
         public float Speed => _config.Speed;
         public float Accel => _config.Accel;
+        public float AccelDelay => _config.AccelDelay;
         public float ScrollScale => _config.ScrollScale;
         public float ScrollAccel => _config.ScrollAccel;
         public int ScrollAmount => _config.ScrollAmount;
@@ -242,9 +243,9 @@ namespace Incode
             }
 
             // for mouse movement
-            var millis = (float) (now - earliest).TotalMilliseconds;
-            var scale = Accel * millis / 1000.0f;
-            var delta = dt * Speed * scale;
+            var seconds = (float) (now - earliest).TotalSeconds;
+            var velocity = Speed * (1.0f + Accel * Math.Max(0, seconds - AccelDelay));
+            var delta = dt * velocity;
 
             PerformActions(now, delta);
 
@@ -547,6 +548,7 @@ namespace Incode
         {
             _speedText.Text = Speed.ToString();
             _accelText.Text = Accel.ToString();
+            _accelDelayText.Text = AccelDelay.ToString();
             _scrollAccelText.Text = ScrollAccel.ToString();
             _scrollScaleText.Text = ScrollScale.ToString();
             _scrollAmount.Text = ScrollAmount.ToString();
@@ -571,6 +573,9 @@ namespace Incode
 
         private void _speedText_Leave(object sender, EventArgs e)
             => WriteValue(f => _config.Speed = f, _speedText);
+
+        private void _accelDelayText_Leave(object sender, EventArgs e)
+            => WriteValue(f => _config.AccelDelay = f, _accelDelayText);
 
         private void _filterFreq_Leave(object sender, EventArgs e)
         {

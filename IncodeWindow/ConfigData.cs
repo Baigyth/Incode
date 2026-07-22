@@ -13,6 +13,7 @@
     {
         public float Speed;
         public float Accel;
+        public float AccelDelay;
         public float ScrollScale;
         public float ScrollAccel;
         public int ScrollAmount;
