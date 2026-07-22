@@ -101,19 +101,11 @@
     <Compile Include="Action.cs" />
     <Compile Include="Command.cs" />
     <Compile Include="ConfigData.cs" />
-    <Compile Include="IncodeWindow.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="IncodeWindow.Designer.cs">
-      <DependentUpon>IncodeWindow.cs</DependentUpon>
-    </Compile>
-    <Compile Include="LogitechGSDK.cs" />
+    <Compile Include="IncodeEngine.cs" />
+    <Compile Include="IncodeApplicationContext.cs" />
     <Compile Include="LowPass.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <EmbeddedResource Include="IncodeWindow.resx">
-      <DependentUpon>IncodeWindow.cs</DependentUpon>
-    </EmbeddedResource>
     <EmbeddedResource Include="Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>

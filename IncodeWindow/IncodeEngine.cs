@@ -1,7 +1,6 @@
 // (C) 2015-20 christian.schladetsch@gmail.com
 
 using System.Runtime.InteropServices;
-using LedCSharp;
 
 namespace Incode
 {
@@ -10,7 +9,6 @@ namespace Incode
     using System.Diagnostics;
     using System.Drawing;
     using System.IO;
-    using System.Threading;
     using System.Windows.Forms;
     using MouseKeyboardActivityMonitor;
     using MouseKeyboardActivityMonitor.WinApi;
@@ -18,12 +16,10 @@ namespace Incode
     using Newtonsoft.Json;
 
     /// <summary>
-    /// Press and hold the MouseEscape key (default to Right-Control) to enter MouseMode.
-    /// Remap Right-Control to CapsLock using:
-    /// 
-    /// Yeah, this should be a service, or at least an app that minimises to the system tray.
+    /// Core engine: hooks, key processing, mouse simulation, config.
+    /// Windowless — no Form dependency.
     /// </summary>
-    public partial class IncodeWindow : Form
+    internal class IncodeEngine : IDisposable
     {
         public float Speed => _config.Speed;
         public float Accel => _config.Accel;
@@ -34,9 +30,6 @@ namespace Incode
         public float FilterRes => _config.MouseFilterResonance;
         public float FilterFreq => _config.MouseFilterFrequency;
 
-
-
-        // true if this app is interpreting and controlling input
         private bool Controlled
         {
             get => _controlled;
@@ -47,39 +40,21 @@ namespace Incode
 
                 if (value)
                     _controlStartTime = DateTime.Now;
-                else if (_mouseLeftDown)
+                else
                 {
-                    _mouseOut.LeftButtonUp();
-                    _mouseLeftDown = false;
+                    if (_mouseLeftDown)
+                    {
+                        _mouseOut.LeftButtonUp();
+                        _mouseLeftDown = false;
+                    }
+                    if (_mouseRightDown)
+                    {
+                        _mouseOut.RightButtonUp();
+                        _mouseRightDown = false;
+                    }
                 }
 
                 ResetMouseFilter();
-
-                // TODO: can't find correct format for dll (although LogiNumLock tool works)
-                //SetKeyboardLights();
-            }
-        }
-
-        private readonly keyboardNames[] _incodeKeys =
-        {
-            keyboardNames.Q,
-            keyboardNames.W,
-            keyboardNames.A,
-            keyboardNames.S,
-            keyboardNames.D,
-            keyboardNames.E,
-            keyboardNames.C,
-            keyboardNames.SPACE,
-        };
-
-        private void SetKeyboardLights()
-        {
-            int r = _controlled ? 255 : 0;
-            int g = _controlled ? 255 : 0;
-            int b = _controlled ? 0 : 255;
-            foreach (var key in _incodeKeys)
-            {
-                LogitechGSDK.LogiLedSetLightingForKeyWithKeyName(key,r,g,b);
             }
         }
 
@@ -88,82 +63,43 @@ namespace Incode
         private InputSimulator _inputSimulator;
         private IMouseSimulator _mouseOut;
         private IKeyboardSimulator _keyboardOut;
-        private bool _controlled; // true while we control all input and output
-        private const float Frequency = 100.0f; // Hertz
+        private bool _controlled;
+        private const float Frequency = 100.0f;
         private System.Windows.Forms.Timer _timer;
-        private float _tx, _ty; // the target mouse position
+        private float _tx, _ty;
         private LowPass _mx = new LowPass(Frequency, 2000, 2.5f);
         private LowPass _my = new LowPass(Frequency, 2000, 2.5f);
         private readonly Dictionary<Keys, Action> _keys = new Dictionary<Keys, Action>();
         private readonly Stopwatch _watch = new Stopwatch();
         private DateTime _controlStartTime;
-
-        // the key to press to activate the custom mode
-        // works well for Wasd 88-key blank keyboards ;)
-        private Keys _overrideKey = Keys.RControlKey; // default, overridden by Config.InterruptKey
+        private Keys _overrideKey = Keys.RControlKey;
         private const string ConfigFileName = "Config.json";
-        private int _inserting;
         private bool _mouseLeftDown;
         private bool _mouseRightDown;
-
         private ConfigData _config;
-        private NotifyIcon _notifyIcon;
-        private bool _isExiting;
+        private bool _disposed;
+        private readonly object _syncRoot = new object();
 
-        public IncodeWindow()
+        public IncodeEngine()
         {
-            InitializeComponent();
             Configure();
             InstallHooks();
-
-            FormBorderStyle = FormBorderStyle.FixedSingle;
-            MaximizeBox = false;
-            MinimizeBox = true;
-
-            // Set icon from embedded resource
-            Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
-
-            // System tray
-            _notifyIcon = new NotifyIcon
-            {
-                Icon = Icon,
-                Text = "InCode",
-                Visible = true
-            };
-            _notifyIcon.ContextMenuStrip = new ContextMenuStrip();
-            _notifyIcon.ContextMenuStrip.Items.Add("Show", null, (s, e) => ShowWindow());
-            _notifyIcon.ContextMenuStrip.Items.Add("Exit", null, (s, e) => { _isExiting = true; _keyboardIn?.Stop(); _mouseIn?.Stop(); Application.Exit(); });
-            _notifyIcon.DoubleClick += (s, e) => ShowWindow();
-
-            // Auto-hide to tray once handle is ready
-            this.Load += (s, e) => HideToTray();
         }
 
-        protected override void OnFormClosing(FormClosingEventArgs e)
+        public void Dispose()
         {
-            if (!_isExiting && e.CloseReason == CloseReason.UserClosing)
-            {
-                e.Cancel = true;
-                HideToTray();
+            if (_disposed)
                 return;
-            }
-            base.OnFormClosing(e);
-        }
+            _disposed = true;
 
-        protected override void OnFormClosed(FormClosedEventArgs e)
-        {
-            _keyboardIn?.Stop();
-            _mouseIn?.Stop();
-
-            _notifyIcon.Visible = false;
-            _notifyIcon?.Dispose();
             _timer?.Stop();
-
             _timer?.Dispose();
-            _keyboardIn?.Dispose();
-            _mouseIn?.Dispose();
 
-            base.OnFormClosed(e);
+            _keyboardIn?.Stop();
+            _keyboardIn?.Dispose();
+
+            _mouseIn?.Stop();
+            _mouseIn?.Dispose();
         }
 
         private void Configure()
@@ -176,21 +112,20 @@ namespace Incode
         {
             _keys.Clear();
 
-            // Load interrupt key override from config (before keymap, must be outside branches)
             if (!string.IsNullOrEmpty(_config.InterruptKey)
                 && Enum.TryParse(_config.InterruptKey, out Keys interruptKey))
             {
                 _overrideKey = interruptKey;
             }
 
-            // If keymap is configured in Config.json, use it
             if (_config.Keymap != null && _config.Keymap.Count > 0)
             {
                 foreach (var kvp in _config.Keymap)
                 {
                     if (Enum.TryParse(kvp.Key, out Command cmd) && Enum.TryParse(kvp.Value, out Keys key))
                     {
-                        _keys.Add(key, new Action(cmd));
+                        if (!_keys.ContainsKey(key))
+                            _keys.Add(key, new Action(cmd));
                     }
                 }
                 return;
@@ -216,13 +151,13 @@ namespace Incode
             _mouseOut = _inputSimulator.Mouse;
             _keyboardOut = _inputSimulator.Keyboard;
 
-            _mouseIn = new MouseHookListener(new GlobalHooker()) {Enabled = true};
-            _keyboardIn = new KeyboardHookListener(new GlobalHooker()) {Enabled = true};
+            _mouseIn = new MouseHookListener(new GlobalHooker()) { Enabled = true };
+            _keyboardIn = new KeyboardHookListener(new GlobalHooker()) { Enabled = true };
 
             _keyboardIn.KeyDown += OnKeyDown;
             _keyboardIn.KeyUp += OnKeyUp;
 
-            _timer = new System.Windows.Forms.Timer {Interval = (int) (1000 / Frequency)};
+            _timer = new System.Windows.Forms.Timer { Interval = (int)(1000 / Frequency) };
             _timer.Tick += PerformCommands;
 
             _watch.Start();
@@ -233,7 +168,9 @@ namespace Incode
             var dt = _watch.ElapsedMilliseconds / 1000.0f;
             _watch.Restart();
 
-            var now = DateTime.Now;
+            lock (_syncRoot)
+            {
+                var now = DateTime.Now;
             var earliest = ButtonsDown(DateTime.MaxValue);
 
             if (earliest == DateTime.MaxValue)
@@ -243,13 +180,14 @@ namespace Incode
             }
 
             // for mouse movement
-            var seconds = (float) (now - earliest).TotalSeconds;
+            var seconds = (float)(now - earliest).TotalSeconds;
             var velocity = Speed * (1.0f + Accel * Math.Max(0, seconds - AccelDelay));
             var delta = dt * velocity;
 
             PerformActions(now, delta);
 
             MoveMouse();
+            }
         }
 
         private DateTime ButtonsDown(DateTime earliest)
@@ -257,8 +195,7 @@ namespace Incode
             foreach (var action in _keys)
             {
                 var act = action.Value;
-                var button = act.Command == Command.LeftDown || act.Command == Command.RightDown;
-                if (button)
+                if (act.Command == Command.LeftDown || act.Command == Command.RightDown)
                     continue;
 
                 if (act.Started > DateTime.MinValue && act.Started < earliest)
@@ -270,19 +207,15 @@ namespace Incode
 
         private void MoveMouse()
         {
-            // For accuracy, keep track of desired location in floats, and get nearest integer to set.
-            // Allow for negative values correctly, as we all have multiple monitors!
             var fx = _mx.Next(_tx);
             var fy = _my.Next(_ty);
-            var nx = (int) (fx < 0 ? (fx - 0.5f) : (fx + 0.5f));
-            var ny = (int) (fy < 0 ? (fy - 0.5f) : (fy + 0.5f));
+            var nx = (int)(fx < 0 ? (fx - 0.5f) : (fx + 0.5f));
+            var ny = (int)(fy < 0 ? (fy - 0.5f) : (fy + 0.5f));
 
-            // Clamp to virtual screen bounds so cursor cannot escape
             var bounds = SystemInformation.VirtualScreen;
             var clampedX = Math.Max(bounds.Left, Math.Min(bounds.Right - 1, nx));
             var clampedY = Math.Max(bounds.Top, Math.Min(bounds.Bottom - 1, ny));
 
-            // If clamped, sync target position so cursor responds immediately when direction changes
             if (clampedX != nx) _tx = clampedX;
             if (clampedY != ny) _ty = clampedY;
 
@@ -297,10 +230,9 @@ namespace Incode
                 if (act.Started == DateTime.MinValue)
                     continue;
 
-                // for vertical scroll
                 var ts = (now - act.Started).TotalSeconds;
                 var accel = 1 + ScrollAccel * ts;
-                var t = (int) (ts * accel * ScrollScale);
+                var t = (int)(ts * accel * ScrollScale);
 
                 switch (act.Command)
                 {
@@ -328,15 +260,9 @@ namespace Incode
 
         public void OnKeyDown(object sender, KeyEventArgs e)
         {
-            // We're inserting a text expansion. in this case, we get phony key downs.
-            // From window's input system. ignore them.
-            if (_inserting > 0)
+            lock (_syncRoot)
             {
-                _inserting--;
-                return;
-            }
-
-            if (!Controlled)
+                if (!Controlled)
             {
                 if (e.KeyCode == _overrideKey)
                 {
@@ -349,14 +275,12 @@ namespace Incode
 
             if (!_keys.TryGetValue(e.KeyCode, out var action))
             {
-                // Block override key repeats in control mode
                 if (Controlled && e.KeyCode == _overrideKey)
                 {
                     Eat(e);
                     return;
                 }
 
-                // Not an InCode command → let modifier keys pass through
                 if (IsModifierKey(e.KeyCode))
                     return;
 
@@ -366,7 +290,6 @@ namespace Incode
 
             Eat(e);
 
-            // One-shot commands: execute immediately, no Started tracking
             switch (action.Command)
             {
                 case Command.ScrollUpAmount:
@@ -377,7 +300,6 @@ namespace Incode
                     return;
             }
 
-            // Sustained commands: only set Started on first press
             if (action.Started != DateTime.MinValue)
                 return;
 
@@ -394,23 +316,14 @@ namespace Incode
                     _mouseLeftDown = true;
                     break;
             }
+            }
         }
 
-        [DllImport("user32.dll")]
-        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
-
-        [DllImport("user32.dll")]
-        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
-
-        private const int GWL_EXSTYLE = -20;
-        private const int WS_EX_TOOLWINDOW = 0x80;
-
-        private static void Trace(string fmt, params object[] args)
-            => Debug.WriteLine(fmt, args);
-
-        private void OnKeyUp(object sender, KeyEventArgs e)
+        public void OnKeyUp(object sender, KeyEventArgs e)
         {
-            if (e.KeyCode == _overrideKey)
+            lock (_syncRoot)
+            {
+                if (e.KeyCode == _overrideKey)
             {
                 Eat(e);
                 if (_mouseLeftDown)
@@ -435,7 +348,6 @@ namespace Incode
 
             if (!_keys.TryGetValue(e.KeyCode, out var action))
             {
-                // Not an InCode command → let modifier keys pass through
                 if (IsModifierKey(e.KeyCode))
                     return;
 
@@ -445,9 +357,7 @@ namespace Incode
 
             Eat(e);
 
-            // Sentinel values are bad. I use one here to indicate that an action is not active.
             action.Started = DateTime.MinValue;
-
 
             switch (action.Command)
             {
@@ -459,7 +369,11 @@ namespace Incode
                     _mouseLeftDown = false;
                     break;
             }
+            }
         }
+
+        private static void Trace(string fmt, params object[] args)
+            => Debug.WriteLine(fmt, args);
 
         private static bool IsModifierKey(Keys key)
         {
@@ -477,9 +391,6 @@ namespace Incode
             e.SuppressKeyPress = true;
         }
 
-        /// <summary>
-        /// Take over keyboard control from Windows
-        /// </summary>
         private void StartControl()
         {
             foreach (var kv in _keys)
@@ -502,9 +413,6 @@ namespace Incode
             Controlled = true;
         }
 
-        /// <summary>
-        /// Move the cursor to the center of the first display.
-        /// </summary>
         private void CenterCursor()
         {
             var screen = Screen.FromPoint(Cursor.Position);
@@ -525,100 +433,31 @@ namespace Incode
             _my.Set(Cursor.Position.Y);
         }
 
-        private void WriteValue(Action<float> write, TextBox text)
-        {
-            write(float.Parse(text.Text));
-            WriteConfig();
-        }
-
-        private void ReadConfig()
+        public void ReadConfig()
         {
             var configFileName = Path.Combine(Directory.GetCurrentDirectory(), ConfigFileName);
 
             if (File.Exists(configFileName))
             {
                 var text = File.ReadAllText(configFileName);
-                _config = JsonConvert.DeserializeObject<ConfigData>(text);
+                try
+                {
+                    _config = JsonConvert.DeserializeObject<ConfigData>(text);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Config parse failed: {ex.Message}");
+                }
             }
 
-            UpdateUi();
-        }
-
-        private void UpdateUi()
-        {
-            _speedText.Text = Speed.ToString();
-            _accelText.Text = Accel.ToString();
-            _accelDelayText.Text = AccelDelay.ToString();
-            _scrollAccelText.Text = ScrollAccel.ToString();
-            _scrollScaleText.Text = ScrollScale.ToString();
-            _scrollAmount.Text = ScrollAmount.ToString();
-            _filterFreq.Text = FilterFreq.ToString();
-            _filterRes.Text = FilterRes.ToString();
-        }
-
-        private void WriteConfig()
-            => File.WriteAllText(ConfigFileName, JsonConvert.SerializeObject(_config));
-
-        private void _scrollAccelText_Leave(object sender, EventArgs e)
-            => WriteValue(f => _config.ScrollAccel = f, _scrollAccelText);
-
-        private void _scrollScaleText_Leave(object sender, EventArgs e)
-            => WriteValue(f => _config.ScrollScale = f, _scrollScaleText);
-
-        private void _scrollAmountText_Leave(object sender, EventArgs e)
-            => WriteValue(f => _config.ScrollAmount = (int) f, _scrollAmount);
-
-        private void _accelText_Leave(object sender, EventArgs e)
-            => WriteValue(f => _config.Accel = f, _accelText);
-
-        private void _speedText_Leave(object sender, EventArgs e)
-            => WriteValue(f => _config.Speed = f, _speedText);
-
-        private void _accelDelayText_Leave(object sender, EventArgs e)
-            => WriteValue(f => _config.AccelDelay = f, _accelDelayText);
-
-        private void _filterFreq_Leave(object sender, EventArgs e)
-        {
-            WriteValue(f => _config.MouseFilterFrequency = f, _filterFreq);
-            UpdateMouseFilter();
-        }
-
-        private void _filterRes_Leave(object sender, EventArgs e)
-        {
-            WriteValue(f => _config.MouseFilterResonance = f, _filterRes);
-            UpdateMouseFilter();
-        }
-
-        private void UpdateMouseFilter()
-        {
-            _mx = new LowPass(Frequency, _config.MouseFilterFrequency, _config.MouseFilterResonance);
-            _my = new LowPass(Frequency, _config.MouseFilterFrequency, _config.MouseFilterResonance);
-            ResetMouseFilter();
-        }
-
-        private void ShowWindow()
-        {
-            int exStyle = GetWindowLong(Handle, GWL_EXSTYLE);
-            SetWindowLong(Handle, GWL_EXSTYLE, exStyle & ~WS_EX_TOOLWINDOW);
-
-            Show();
-            WindowState = FormWindowState.Normal;
-            ShowInTaskbar = true;
-            BringToFront();
-        }
-
-        private void HideToTray()
-        {
-            Hide();
-            ShowInTaskbar = false;
-
-            int exStyle = GetWindowLong(Handle, GWL_EXSTYLE);
-            SetWindowLong(Handle, GWL_EXSTYLE, exStyle | WS_EX_TOOLWINDOW);
-        }
-
-        private void _exitToolStripMenuItem_Click(object sender, EventArgs e)
-        {
-            HideToTray();
+            // Ensure defaults for zero values (missing config or parse failure)
+            if (_config.Speed <= 0) _config.Speed = 150;
+            if (_config.Accel < 0) _config.Accel = 0;
+            if (_config.AccelDelay <= 0) _config.AccelDelay = 0.5f;
+            if (_config.ScrollScale <= 0) _config.ScrollScale = 30;
+            if (_config.ScrollAmount <= 0) _config.ScrollAmount = 3;
+            if (_config.MouseFilterFrequency <= 0) _config.MouseFilterFrequency = 2000;
+            if (_config.MouseFilterResonance <= 0) _config.MouseFilterResonance = 2.5f;
         }
     }
 }

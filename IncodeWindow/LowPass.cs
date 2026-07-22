@@ -16,6 +16,12 @@
         {
             var c = 1.0f / (float) Math.Tan(3.1415f * freq * sampleRate);
 
+            if (float.IsInfinity(c) || c > 1e7f)
+            {
+                freq = 2000;
+                c = 1.0f / (float)Math.Tan(3.1415f * freq * sampleRate);
+            }
+
             a1 = 1.0f / (1.0f + resonance * c + c * c);
             a2 = 2.0f * a1;
             a3 = a1;
