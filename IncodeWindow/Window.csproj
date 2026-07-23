@@ -9,7 +9,6 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>IncodeWindow</RootNamespace>
     <AssemblyName>IncodeWindow</AssemblyName>
-    <ApplicationIcon>..\Doc\logo_GM7_icon.ico</ApplicationIcon>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <TargetFrameworkProfile />
