@@ -1,53 +1,84 @@
 # InCode ![Icon](Doc/Logo.png "Incode Logo")
-[![CodeFactor](https://www.codefactor.io/repository/github/cschladetsch/incode/badge)](https://www.codefactor.io/repository/github/cschladetsch/incode) [![License](https://img.shields.io/github/license/cschladetsch/incode.svg?label=License&maxAge=86400)](./LICENSE) [![Release](https://img.shields.io/github/release/cschladetsch/incode.svg?label=Release&maxAge=60)](https://github.com/cschladetsch/incode/releases/latest)
+[![License](https://img.shields.io/github/license/Baigyth/Incode.svg?label=License&maxAge=86400)](./LICENSE) [![Release](https://img.shields.io/github/release/Baigyth/Incode.svg?label=Release&maxAge=60)](https://github.com/Baigyth/Incode/releases/latest)
 
-Custom input system for keyboard and mouse for Windows.
-
-This application allows the user to control the mouse and other systems such as cursor and scrolling using a minimal set of keys - without actually using the mouse. It also allows for the use of abbreviations. Yes, there are other tools that do this and better but hey.
+Custom keyboard-driven mouse control for Windows. Hold the Interrupt key and use keyboard keys to move the cursor, scroll, and click — no mouse needed.
 
 ## Usage
-Hold an `Interrupt` button - By default the Right-Control key - and then use the rest of the keyboard to send custom input.
 
-*NOTE* Use the provided `SharpKeys` binary to remap the CapsLock key to the Right-Control Key. The CapsLock key is an anacronism in any case, may as well put it to good use.
+### Interrupt Key
 
-For instance, press and hold the `Interrupt` button, and:
-* use `WASD` to move the mouse cursor up down left right. Movement is passed through a customised filter to emulate the behavior of an Ibm ThinkPad clit button.  
-* `R` and `V` keys send scroll up and down, again with a custom filter and timings. 
-* The `space bar` simulates the left mouse button
-* `G` the right mouse button.
-* You can also double-click. I think the threshold is 300ms.
-* Double-pressing the `Interrupt` key centers the cursor on the main monitor.
-* There is some customisation available via a simple GUI, and to change the keys, just edit `Config.json`.
+Hold the **Interrupt key** (default: Right-Control) to enter control mode. While held, keyboard input is intercepted and mapped to mouse actions.
 
-## Installation
-Just build the Visual Studio solution. This is very much *not* a cross-platform app so I didn't bother with CMake.
+- **Double-tap** the Interrupt key within 300ms to instantly center the cursor on the current monitor.
+- Unmapped modifier keys (Shift, Ctrl, Alt) pass through to the OS, so you can still use shortcuts like Ctrl+C while in control mode.
 
-## Abbreviations
-Enter abbreviation mode with `Interrupt`-Q (typically Capslock-Q). Then you can insert any text as mapped in the config file.
+> Set `"InterruptKey": "CapsLock"` in `Config.json` if you prefer Caps Lock as the trigger key.
 
-For instance, my email address is `christian@schladetsch.com`. I end up typing that a *lot*. Now I can enter it with `Interrupt`-Qg.
+### Default Key Bindings
 
-The `g` is the abbreviation stored in the Json file. I've added a bunch of things I use a lot, like passwords etc. Obviously you'll have to make your own Config.json in the same folder as the IncodeWindow.exe executable.
+| Key | Action |
+|---|---|
+| `W` `A` `S` `D` | Move cursor |
+| `/` | Left click |
+| Right-Shift | Right click |
+| `R` | Scroll up (per line) |
+| `F` | Scroll down (per line) |
 
-When you enter abbreviation mode, a popup appears showing all your abbreviations. Note that you need to still hold down the `Interrupt` key to complete the abbreviation.
+All keys are configurable via `Config.json`. Set any command to `""` to disable it.
 
-## Json Config
-The configuration is stored in `Config.json`, in the same folder as the app.
+> Smooth scroll (`ScrollUp` / `ScrollDown`) is disabled by default.
+> To enable, set them in `Keymap`, e.g. `"ScrollUp": "E", "ScrollDown": "C"`.
 
-A typical config file would look like:
+### System Tray
+
+InCode runs as a **tray-only app** — no window. Right-click the tray icon to:
+
+| Action | Effect |
+|---|---|
+| **Restart** | Reload `Config.json` and restart the engine |
+| **Exit** | Quit the application |
+
+Double-click the tray icon to restart.
+
+## Changes from Upstream
+
+This fork ([Baigyth/Incode](https://github.com/Baigyth/Incode)) is a purified version of [cschladetsch/Incode](https://github.com/cschladetsch/Incode).
+
+### Removed Features
+
+| Feature | Reason |
+|---|---|
+| **Settings window** | Replaced by tray-only operation. Edit `Config.json` directly. |
+| **Abbreviations** | Text expansion removed to keep scope focused on mouse control. |
+| **Key-press sounds** | Audio feedback caused stability issues (WaveOutEvent resource leak). |
+| **Volume control** | Out of scope for a mouse-replacement tool. |
+
+### Modified: Mouse Speed Formula
+
+Old formula used `Speed` and `Accel` as additive components. The new formula introduces a delay-based acceleration:
+
+```
+velocity = Speed × (1 + Accel × max(0, t − AccelDelay))
+```
+
+| Parameter | Description |
+|---|---|
+| `Speed` | Base cursor speed in pixels/second at the start of movement |
+| `Accel` | Multiplicative factor applied after the delay elapses |
+| `AccelDelay` | Grace period in seconds before acceleration begins |
+
+**Migration from old configs:** Old `Accel` was an absolute added speed — now it's a **multiplier** on `Speed`. You'll likely need to lower `Speed` and raise `Accel`. Start with `Speed: 150, Accel: 15, AccelDelay: 0.3`.
+
+Cursor movement is smoothed by a 2nd-order IIR low-pass filter (configurable via `MouseFilterResonance` / `MouseFilterFrequency`), inspired by the IBM ThinkPad TrackPoint feel.
+
+## Configuration
+
+All settings in `Config.json` (application directory). Read on startup and on restart.
+
+### Complete Example
 
 ```json
 {
-  "Abbreviations":
-  {
-    "m1": "christian.schladetsch@gmail.com",
-    "m2": "christian@schladetsch.com",
-    "ph1": "0476561112",
-    "ph2": "+61 476561112",
-    "cc": "123456789012",
-    "p1": "hunter11",
-    "p2": "password$$"
-  },
   "Keymap": {
     "Up": "W",
     "Down": "S",
@@ -55,29 +86,83 @@ A typical config file would look like:
     "Right": "D",
     "ScrollUp": "E",
     "ScrollDown": "C",
-    "LeftDown": "Space",
-    "RightDown": "F",
+    "LeftDown": "OemQuestion",
+    "RightDown": "RShiftKey",
     "ScrollUpAmount": "R",
-    "ScrollDownAmount": "V",
-    "Abbreviate": "Q",
-    "Escape": "Escape",
-    "VolumeDown": "D1",
-    "VolumeUp": "D2",
-    "VolumeMute": "D3"
+    "ScrollDownAmount": "F"
   },
   "InterruptKey": "RControlKey",
-  "SoundEnabled": false,
-  "Speed": 300.0,
+  "Speed": 250.0,
   "Accel": 15.0,
-  "ScrollScale": 30.0,
+  "AccelDelay": 0.3,
+  "ScrollScale": 20.0,
   "ScrollAccel": 0.85,
   "ScrollAmount": 3,
   "MouseFilterResonance": 3.5,
-  "MouseFilterFrequency":  2500
+  "MouseFilterFrequency": 2500
 }
 ```
 
-## Bugs or Requests
-Use GitHub's Issues to raise any faults or feature requests.
+### Keymap Commands
 
-Otherwise, feel free to [contact me](mailto:christian@schladetsch.com).
+| Command | Behavior |
+|---|---|
+| `Up` `Down` `Left` `Right` | Cursor movement |
+| `ScrollUp` `ScrollDown` | Smooth continuous scroll |
+| `ScrollUpAmount` `ScrollDownAmount` | Discrete scroll (`ScrollAmount` lines per press) |
+| `LeftDown` `RightDown` | Mouse button (hold to keep pressed) |
+
+### Modifier Key Reference
+
+The `System.Windows.Forms.Keys` enum names differ from keyboard labels. Use this reference when editing `Keymap` or `InterruptKey`:
+
+| Keyboard Key | Config String |
+|---|---|
+| Left Shift | `LShiftKey` |
+| Right Shift | `RShiftKey` |
+| Left Ctrl | `LControlKey` |
+| Right Ctrl | `RControlKey` |
+| Left Alt | `LMenu` |
+| Right Alt | `RMenu` |
+| Left Win | `LWin` |
+| Right Win | `RWin` |
+| Caps Lock | `CapsLock` |
+| Apps / Menu | `Apps` |
+| Space | `Space` |
+| Tab | `Tab` |
+| Enter | `Return` |
+| Escape | `Escape` |
+| Backspace | `Back` |
+| Delete | `Delete` |
+| `/` | `OemQuestion` |
+| `\` | `OemPipe` |
+| `[` | `OemOpenBrackets` |
+| `]` | `OemCloseBrackets` |
+| `;` | `OemSemicolon` |
+| `'` | `OemQuotes` |
+| `,` | `Oemcomma` |
+| `.` | `OemPeriod` |
+| `-` | `OemMinus` |
+| `=` | `OemPlus` |
+| `` ` `` | `Oemtilde` |
+| `0`–`9` | `D0`–`D9` |
+| `A`–`Z` | `A`–`Z` |
+| `F1`–`F12` | `F1`–`F12` |
+
+> **Common pitfalls:**
+> - `OemQuestion` is `/`, not `?`. `Oemcomma` is `,`. `OemPeriod` is `.`. The name comes from the base US layout, not the shifted character.
+> - **Modifier pass-through:** `LShiftKey` / `RShiftKey` / `LControlKey` / `RControlKey` / `LMenu` / `RMenu` are automatically passed through to the OS when **not** mapped in `Keymap`. If you map them to a command, they trigger the command instead.
+> - `LWin` / `RWin` are **not** in the pass-through list — they are eaten in control mode unless explicitly mapped.
+
+## Build
+
+```powershell
+# Requires .NET SDK 6.0+ (MSBuild 17.x)
+C:\Progra~1\dotnet\dotnet.exe msbuild Incode.sln /p:Configuration=Release
+```
+
+Output: `IncodeWindow/bin/Release/IncodeWindow.exe`
+
+## License
+
+MIT — see [LICENSE](./LICENSE).

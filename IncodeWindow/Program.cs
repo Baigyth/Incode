@@ -14,7 +14,7 @@
 		{
 			Application.EnableVisualStyles();
 			Application.SetCompatibleTextRenderingDefault(false);
-			Application.Run(new IncodeWindow());
+			Application.Run(new IncodeApplicationContext());
 		}
 	}
 }

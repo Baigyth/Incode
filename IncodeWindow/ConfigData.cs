@@ -9,31 +9,29 @@
     /// This is because it is intended to store things like passwords and credit-card details.
     /// 
     /// </summary>
-    internal struct ConfigData
+    internal class ConfigData
     {
-        public Dictionary<string, string> Abbreviations;
-        public float Speed;
-        public float Accel;
-        public float ScrollScale;
-        public float ScrollAccel;
-        public int ScrollAmount;
-        public float MouseFilterResonance;
-        public float MouseFilterFrequency;
+        public float Speed { get; set; }
+        public float Accel { get; set; }
+        public float AccelDelay { get; set; }
+        public float ScrollScale { get; set; }
+        public float ScrollAccel { get; set; }
+        public int ScrollAmount { get; set; }
+        public float MouseFilterResonance { get; set; }
+        public float MouseFilterFrequency { get; set; }
 
         /// <summary>
         /// Key binding overrides. Key = Command enum name, Value = Keys enum name.
         /// Example: "Up": "W", "LeftDown": "Space", "ScrollUpAmount": "R"
         /// When null or empty, defaults are used.
         /// </summary>
-        public Dictionary<string, string> Keymap;
+        public Dictionary<string, string> Keymap { get; set; }
 
         /// <summary>
         /// The interrupt/override key that activates control mode. Keys enum name, e.g. "CapsLock", "RControlKey".
         /// Defaults to CapsLock when null/empty.
         /// </summary>
-        public string InterruptKey;
+        public string InterruptKey { get; set; }
 
-        /// <summary>Enable key-press sounds (A/S/D/F). Default false.</summary>
-        public bool SoundEnabled;
     }
 }
