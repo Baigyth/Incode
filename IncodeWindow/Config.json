@@ -12,6 +12,8 @@
     "ScrollDownAmount": "F"
   },
   "InterruptKey": "RControlKey",
+  "FineModifierKey": "LMenu",
+  "FineSpeed": 50.0,
   "Speed": 250.0,
   "Accel": 15.0,
   "AccelDelay": 0.3,

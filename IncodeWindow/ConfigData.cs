@@ -33,5 +33,16 @@
         /// </summary>
         public string InterruptKey { get; set; }
 
+        /// <summary>
+        /// The fine-movement modifier key held during control mode to use FineSpeed instead of regular
+        /// Speed+Accel. Keys enum name, e.g. "LShiftKey", "LMenu". Empty/null disables fine mode.
+        /// </summary>
+        public string FineModifierKey { get; set; }
+
+        /// <summary>
+        /// Fixed slow speed (px/s) used when the fine modifier is held. No acceleration applied.
+        /// </summary>
+        public float FineSpeed { get; set; }
+
     }
 }

@@ -73,6 +73,8 @@ namespace Incode
         private readonly Stopwatch _watch = new Stopwatch();
         private DateTime _controlStartTime;
         private Keys _overrideKey = Keys.RControlKey;
+        private Keys _fineModifierKey = Keys.None;
+        private bool _fineModifierHeld;
         private const string ConfigFileName = "Config.json";
         private bool _mouseLeftDown;
         private bool _mouseRightDown;
@@ -118,6 +120,16 @@ namespace Incode
                 _overrideKey = interruptKey;
             }
 
+            if (!string.IsNullOrEmpty(_config.FineModifierKey)
+                && Enum.TryParse(_config.FineModifierKey, out Keys fineModKey))
+            {
+                _fineModifierKey = fineModKey;
+            }
+            else
+            {
+                _fineModifierKey = Keys.None;
+            }
+
             if (_config.Keymap != null && _config.Keymap.Count > 0)
             {
                 foreach (var kvp in _config.Keymap)
@@ -131,17 +143,6 @@ namespace Incode
                 return;
             }
 
-            // Fallback to hardcoded defaults
-            _keys.Add(Keys.W, new Action(Command.Up));
-            _keys.Add(Keys.A, new Action(Command.Left));
-            _keys.Add(Keys.S, new Action(Command.Down));
-            _keys.Add(Keys.D, new Action(Command.Right));
-            _keys.Add(Keys.E, new Action(Command.ScrollUp));
-            _keys.Add(Keys.C, new Action(Command.ScrollDown));
-            _keys.Add(Keys.F, new Action(Command.RightDown));
-            _keys.Add(Keys.Space, new Action(Command.LeftDown));
-            _keys.Add(Keys.R, new Action(Command.ScrollUpAmount));
-            _keys.Add(Keys.V, new Action(Command.ScrollDownAmount));
         }
 
         private void InstallHooks()
@@ -181,7 +182,9 @@ namespace Incode
 
             // for mouse movement
             var seconds = (float)(now - earliest).TotalSeconds;
-            var velocity = Speed * (1.0f + Accel * Math.Max(0, seconds - AccelDelay));
+            var velocity = _fineModifierHeld
+                ? _config.FineSpeed
+                : Speed * (1.0f + Accel * Math.Max(0, seconds - AccelDelay));
             var delta = dt * velocity;
 
             PerformActions(now, delta);
@@ -281,6 +284,13 @@ namespace Incode
                     return;
                 }
 
+                if (Controlled && _fineModifierKey != Keys.None && e.KeyCode == _fineModifierKey)
+                {
+                    _fineModifierHeld = true;
+                    Eat(e);
+                    return;
+                }
+
                 if (IsModifierKey(e.KeyCode))
                     return;
 
@@ -338,6 +348,7 @@ namespace Incode
                     _mouseRightDown = false;
                 }
 
+                _fineModifierHeld = false;
                 Controlled = false;
                 Trace("Not controlling");
                 return;
@@ -345,6 +356,24 @@ namespace Incode
 
             if (!Controlled)
                 return;
+
+            if (_fineModifierKey != Keys.None && e.KeyCode == _fineModifierKey)
+            {
+                _fineModifierHeld = false;
+
+                // Reset all active direction-key timestamps to prevent the accumulated
+                // seconds from FineModifier mode causing an instant velocity spike
+                // when exiting fine mode
+                var now = DateTime.Now;
+                foreach (var kv in _keys)
+                {
+                    if (kv.Value.Started != DateTime.MinValue)
+                        kv.Value.Started = now;
+                }
+
+                Eat(e);
+                return;
+            }
 
             if (!_keys.TryGetValue(e.KeyCode, out var action))
             {
@@ -363,6 +392,7 @@ namespace Incode
             {
                 case Command.RightDown:
                     _mouseOut.RightButtonUp();
+                    _mouseRightDown = false;
                     break;
                 case Command.LeftDown:
                     _mouseOut.LeftButtonUp();
@@ -395,6 +425,8 @@ namespace Incode
         {
             foreach (var kv in _keys)
                 kv.Value.Started = DateTime.MinValue;
+
+            _fineModifierHeld = false;
 
             var pos = Cursor.Position;
             _tx = pos.X;
@@ -437,23 +469,88 @@ namespace Incode
         {
             var configFileName = Path.Combine(Directory.GetCurrentDirectory(), ConfigFileName);
 
-            if (File.Exists(configFileName))
+            if (!File.Exists(configFileName))
             {
-                var text = File.ReadAllText(configFileName);
-                try
+                var defaultConfig = new ConfigData
                 {
-                    _config = JsonConvert.DeserializeObject<ConfigData>(text);
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"Config parse failed: {ex.Message}");
-                }
+                    Speed = 150,
+                    Accel = 0,
+                    AccelDelay = 0.5f,
+                    FineSpeed = 50,
+                    ScrollScale = 30,
+                    ScrollAccel = 0,
+                    ScrollAmount = 3,
+                    MouseFilterFrequency = 2000,
+                    MouseFilterResonance = 2.5f,
+                    InterruptKey = "RControlKey",
+                    FineModifierKey = "LShift",
+                    Keymap = new Dictionary<string, string>
+                    {
+                        ["Up"] = "W", ["Down"] = "S", ["Left"] = "A", ["Right"] = "D",
+                        ["ScrollUp"] = "E", ["ScrollDown"] = "C",
+                        ["LeftDown"] = "Space", ["RightDown"] = "F",
+                        ["ScrollUpAmount"] = "R", ["ScrollDownAmount"] = "V"
+                    }
+                };
+                var json = JsonConvert.SerializeObject(defaultConfig, Formatting.Indented);
+                File.WriteAllText(configFileName, json);
+                MessageBox.Show(
+                    $"InCode configuration file not found.\n\nA default config has been created at:\n{configFileName}\n\nPlease edit it to your preferences and restart InCode.",
+                    "InCode — Config Created",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                Environment.Exit(0);
+                return;
             }
+
+            var text = File.ReadAllText(configFileName);
+            try
+            {
+                _config = JsonConvert.DeserializeObject<ConfigData>(text);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Failed to parse Config.json — JSON syntax error.\n\n{ex.Message}\n\nPlease fix:\n{configFileName}\n\nThen restart InCode.",
+                    "InCode — Config Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+                Environment.Exit(0);
+                return;
+            }
+
+            // Rebuild and exit when Keymap is empty — the user cannot use InCode
+            // without knowing what keys are bound.
+            if (_config != null && (_config.Keymap == null || _config.Keymap.Count == 0))
+            {
+                _config.Keymap = new Dictionary<string, string>
+                {
+                    ["Up"] = "W", ["Down"] = "S", ["Left"] = "A", ["Right"] = "D",
+                    ["ScrollUp"] = "E", ["ScrollDown"] = "C",
+                    ["LeftDown"] = "Space", ["RightDown"] = "F",
+                    ["ScrollUpAmount"] = "R", ["ScrollDownAmount"] = "V"
+                };
+                if (string.IsNullOrEmpty(_config.FineModifierKey))
+                    _config.FineModifierKey = "LShift";
+                var json = JsonConvert.SerializeObject(_config, Formatting.Indented);
+                File.WriteAllText(configFileName, json);
+                MessageBox.Show(
+                    "InCode key bindings were empty.\n\nDefault key bindings have been written to:\n" + configFileName + "\n\nPlease edit them to your preferences and restart InCode.",
+                    "InCode — Keymap Created",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                Environment.Exit(0);
+                return;
+            }
+
+            if (_config == null)
+                _config = new ConfigData();
 
             // Ensure defaults for zero values (missing config or parse failure)
             if (_config.Speed <= 0) _config.Speed = 150;
             if (_config.Accel < 0) _config.Accel = 0;
             if (_config.AccelDelay <= 0) _config.AccelDelay = 0.5f;
+            if (_config.FineSpeed <= 0) _config.FineSpeed = 50;
             if (_config.ScrollScale <= 0) _config.ScrollScale = 30;
             if (_config.ScrollAmount <= 0) _config.ScrollAmount = 3;
             if (_config.MouseFilterFrequency <= 0) _config.MouseFilterFrequency = 2000;
