@@ -14,15 +14,55 @@ Hold the **Interrupt key** (default: Right-Control) to enter control mode. While
 
 > Set `"InterruptKey": "CapsLock"` in `Config.json` if you prefer Caps Lock as the trigger key.
 
+### Fine Mode
+
+While in control mode, hold the **Fine Modifier key** (default: Left Shift) to enter fine mode. In fine mode, cursor movement uses a fixed slow speed (`FineSpeed`, default 50 px/s) with no acceleration, giving you pixel-precise control.
+
+- Fine mode is useful for precise targeting (links, UI elements, small buttons).
+- Released by letting go of the Fine Modifier key.
+- Configure via `"FineModifierKey"` (Keys enum name) and `"FineSpeed"` (float) in `Config.json`.
+- Set `"FineModifierKey": ""` to disable fine mode.
+
+> Unlike the regular speed formula (`Speed × (1 + Accel × time)`), fine mode uses a flat `FineSpeed` — no acceleration ramp.
+
+### Grid Mode (9-Cell Navigation)
+
+While in control mode, hold the **Grid key** (default: Left Alt) to enter grid mode. The current monitor is divided into a 3×3 grid. Press the key corresponding to a grid cell to instantly jump the cursor to that cell's center.
+
+Grid key can be configured via `"GridKey"` in `Config.json` (Keys enum name, e.g. `"LMenu"`). Set to `""` to disable.
+
+**Default grid key mapping (configurable via `GridKeys`):**
+```
+ Q  W  E     ← top row
+ A  S  D     ← middle row
+ Z  X  C     ← bottom row
+```
+
+| Key | Target |
+|---|---|
+| Q | Top-left |
+| W | Top-center |
+| E | Top-right |
+| A | Middle-left |
+| S | Center |
+| D | Middle-right |
+| Z | Bottom-left |
+| X | Bottom-center |
+| C | Bottom-right |
+
+- Grid mode locks out all normal control-mode key bindings (A/S/D etc. do not move the cursor while grid mode is active).
+- Release the Grid key to return to normal control mode.
+- Multiple jumps can be performed while holding the Grid key.
+
 ### Default Key Bindings
 
 | Key | Action |
 |---|---|
 | `W` `A` `S` `D` | Move cursor |
-| `/` | Left click |
-| Right-Shift | Right click |
+| `Space` | Left click (hold to keep pressed) |
+| `F` | Right click (hold to keep pressed) |
 | `R` | Scroll up (per line) |
-| `F` | Scroll down (per line) |
+| `V` | Scroll down (per line) |
 
 All keys are configurable via `Config.json`. Set any command to `""` to disable it.
 
@@ -79,6 +119,19 @@ All settings in `Config.json` (application directory). Read on startup and on re
 
 ```json
 {
+  "InterruptKey": "RControlKey",
+  "Speed": 150.0,
+  "Accel": 15.0,
+  "AccelDelay": 0.3,
+  "ScrollScale": 30.0,
+  "ScrollAccel": 0.0,
+  "ScrollAmount": 3,
+  "MouseFilterResonance": 2.5,
+  "MouseFilterFrequency": 2000,
+  "FineModifierKey": "LShiftKey",
+  "FineSpeed": 50.0,
+  "GridKey": "LMenu",
+  "GridKeys": ["Q", "W", "E", "A", "S", "D", "Z", "X", "C"],
   "Keymap": {
     "Up": "W",
     "Down": "S",
@@ -86,20 +139,11 @@ All settings in `Config.json` (application directory). Read on startup and on re
     "Right": "D",
     "ScrollUp": "E",
     "ScrollDown": "C",
-    "LeftDown": "OemQuestion",
-    "RightDown": "RShiftKey",
+    "LeftDown": "Space",
+    "RightDown": "F",
     "ScrollUpAmount": "R",
-    "ScrollDownAmount": "F"
-  },
-  "InterruptKey": "RControlKey",
-  "Speed": 250.0,
-  "Accel": 15.0,
-  "AccelDelay": 0.3,
-  "ScrollScale": 20.0,
-  "ScrollAccel": 0.85,
-  "ScrollAmount": 3,
-  "MouseFilterResonance": 3.5,
-  "MouseFilterFrequency": 2500
+    "ScrollDownAmount": "V"
+  }
 }
 ```
 

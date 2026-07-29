@@ -67,15 +67,42 @@ namespace Incode
         private const float Frequency = 100.0f;
         private System.Windows.Forms.Timer _timer;
         private float _tx, _ty;
-        private LowPass _mx = new LowPass(Frequency, 2000, 2.5f);
-        private LowPass _my = new LowPass(Frequency, 2000, 2.5f);
+        private LowPass _mx = new LowPass(Frequency, DefaultMouseFilterFrequency, DefaultMouseFilterResonance);
+        private LowPass _my = new LowPass(Frequency, DefaultMouseFilterFrequency, DefaultMouseFilterResonance);
         private readonly Dictionary<Keys, Action> _keys = new Dictionary<Keys, Action>();
+        private bool _gridMode;
+        private Keys _gridActivateKey = Keys.None;
+        private readonly Dictionary<Keys, int> _gridPositionMap = new Dictionary<Keys, int>();
         private readonly Stopwatch _watch = new Stopwatch();
         private DateTime _controlStartTime;
         private Keys _overrideKey = Keys.RControlKey;
         private Keys _fineModifierKey = Keys.None;
         private bool _fineModifierHeld;
+        private Keys _gridKeyDownEaten = Keys.None;
+        private Keys _fineModKeyDownEaten = Keys.None;
         private const string ConfigFileName = "Config.json";
+
+        // Default config values — single source of truth
+        private const float DefaultSpeed = 150;
+        private const float DefaultAccel = 0;
+        private const float DefaultAccelDelay = 0.5f;
+        private const float DefaultFineSpeed = 50;
+        private const float DefaultScrollScale = 30;
+        private const float DefaultScrollAccel = 0;
+        private const int DefaultScrollAmount = 3;
+        private const float DefaultMouseFilterFrequency = 2000;
+        private const float DefaultMouseFilterResonance = 2.5f;
+        private const string DefaultInterruptKey = "RControlKey";
+        private const string DefaultFineModifierKey = "LShiftKey";
+
+        private static readonly string[] DefaultGridKeys = new[] { "Q", "W", "E", "A", "S", "D", "Z", "X", "C" };
+        private static readonly Dictionary<string, string> DefaultKeymap = new Dictionary<string, string>
+        {
+            ["Up"] = "W", ["Down"] = "S", ["Left"] = "A", ["Right"] = "D",
+            ["ScrollUp"] = "E", ["ScrollDown"] = "C",
+            ["LeftDown"] = "Space", ["RightDown"] = "F",
+            ["ScrollUpAmount"] = "R", ["ScrollDownAmount"] = "V"
+        };
         private bool _mouseLeftDown;
         private bool _mouseRightDown;
         private ConfigData _config;
@@ -108,6 +135,7 @@ namespace Incode
         {
             ReadConfig();
             LoadKeyMap();
+            LoadGridMap();
         }
 
         private void LoadKeyMap()
@@ -143,6 +171,43 @@ namespace Incode
                 return;
             }
 
+        }
+
+        private void LoadGridMap()
+        {
+            _gridPositionMap.Clear();
+
+            // Parse GridKey
+            if (!string.IsNullOrEmpty(_config.GridKey)
+                && Enum.TryParse(_config.GridKey, out Keys gridKey))
+            {
+                _gridActivateKey = gridKey;
+            }
+            else
+            {
+                _gridActivateKey = Keys.None;
+            }
+
+            // GridKey not configured → skip grid mode entirely
+            if (_gridActivateKey == Keys.None)
+                return;
+
+            // Build grid position map from the configured keys array
+            var gridKeys = _config.GridKeys;
+            if (gridKeys == null || gridKeys.Length < 9)
+            {
+                gridKeys = DefaultGridKeys;
+            }
+
+            for (int i = 0; i < 9 && i < gridKeys.Length; i++)
+            {
+                if (!string.IsNullOrEmpty(gridKeys[i])
+                    && Enum.TryParse(gridKeys[i], out Keys key))
+                {
+                    if (!_gridPositionMap.ContainsKey(key))
+                        _gridPositionMap.Add(key, i);
+                }
+            }
         }
 
         private void InstallHooks()
@@ -276,17 +341,40 @@ namespace Incode
                 return;
             }
 
+            // GridKey press → enter grid mode
+            if (_gridActivateKey != Keys.None && e.KeyCode == _gridActivateKey)
+            {
+                _gridMode = true;
+                _gridKeyDownEaten = e.KeyCode;
+                Eat(e);
+                return;
+            }
+
+            // Grid mode active → only grid position keys work; all others blocked
+            if (_gridMode)
+            {
+                if (_gridPositionMap.TryGetValue(e.KeyCode, out int cellIndex))
+                {
+                    ExecuteGridJump(cellIndex);
+                    Eat(e);
+                    return;
+                }
+                Eat(e);
+                return;
+            }
+
             if (!_keys.TryGetValue(e.KeyCode, out var action))
             {
-                if (Controlled && e.KeyCode == _overrideKey)
+                if (e.KeyCode == _overrideKey)
                 {
                     Eat(e);
                     return;
                 }
 
-                if (Controlled && _fineModifierKey != Keys.None && e.KeyCode == _fineModifierKey)
+                if (_fineModifierKey != Keys.None && e.KeyCode == _fineModifierKey)
                 {
                     _fineModifierHeld = true;
+                    _fineModKeyDownEaten = e.KeyCode;
                     Eat(e);
                     return;
                 }
@@ -349,6 +437,9 @@ namespace Incode
                 }
 
                 _fineModifierHeld = false;
+                _gridMode = false;
+                _gridKeyDownEaten = Keys.None;
+                _fineModKeyDownEaten = Keys.None;
                 Controlled = false;
                 Trace("Not controlling");
                 return;
@@ -357,6 +448,19 @@ namespace Incode
             if (!Controlled)
                 return;
 
+            // GridKey release → exit grid mode (only eat if KeyDown was also eaten)
+            if (_gridActivateKey != Keys.None && e.KeyCode == _gridActivateKey)
+            {
+                _gridMode = false;
+                if (_gridKeyDownEaten == e.KeyCode)
+                {
+                    _gridKeyDownEaten = Keys.None;
+                    Eat(e);
+                }
+                return;
+            }
+
+            // FineModifierKey release (only eat if KeyDown was also eaten)
             if (_fineModifierKey != Keys.None && e.KeyCode == _fineModifierKey)
             {
                 _fineModifierHeld = false;
@@ -371,7 +475,11 @@ namespace Incode
                         kv.Value.Started = now;
                 }
 
-                Eat(e);
+                if (_fineModKeyDownEaten == e.KeyCode)
+                {
+                    _fineModKeyDownEaten = Keys.None;
+                    Eat(e);
+                }
                 return;
             }
 
@@ -427,6 +535,9 @@ namespace Incode
                 kv.Value.Started = DateTime.MinValue;
 
             _fineModifierHeld = false;
+            _gridMode = false;
+            _gridKeyDownEaten = Keys.None;
+            _fineModKeyDownEaten = Keys.None;
 
             var pos = Cursor.Position;
             _tx = pos.X;
@@ -458,6 +569,30 @@ namespace Incode
             ResetMouseFilter();
         }
 
+        private void ExecuteGridJump(int cellIndex)
+        {
+            if (cellIndex < 0 || cellIndex > 8)
+                return;
+
+            var screen = Screen.FromPoint(Cursor.Position);
+            var area = screen.WorkingArea;
+
+            int cellWidth = area.Width / 3;
+            int cellHeight = area.Height / 3;
+
+            int row = cellIndex / 3;
+            int col = cellIndex % 3;
+
+            int centerX = area.Left + col * cellWidth + cellWidth / 2;
+            int centerY = area.Top + row * cellHeight + cellHeight / 2;
+
+            Cursor.Position = new Point(centerX, centerY);
+
+            _tx = centerX;
+            _ty = centerY;
+            ResetMouseFilter();
+        }
+
         private void ResetMouseFilter()
         {
             Trace("MouseCursor: {0}", Cursor.Position);
@@ -473,24 +608,20 @@ namespace Incode
             {
                 var defaultConfig = new ConfigData
                 {
-                    Speed = 150,
-                    Accel = 0,
-                    AccelDelay = 0.5f,
-                    FineSpeed = 50,
-                    ScrollScale = 30,
-                    ScrollAccel = 0,
-                    ScrollAmount = 3,
-                    MouseFilterFrequency = 2000,
-                    MouseFilterResonance = 2.5f,
-                    InterruptKey = "RControlKey",
-                    FineModifierKey = "LShift",
-                    Keymap = new Dictionary<string, string>
-                    {
-                        ["Up"] = "W", ["Down"] = "S", ["Left"] = "A", ["Right"] = "D",
-                        ["ScrollUp"] = "E", ["ScrollDown"] = "C",
-                        ["LeftDown"] = "Space", ["RightDown"] = "F",
-                        ["ScrollUpAmount"] = "R", ["ScrollDownAmount"] = "V"
-                    }
+                    Speed = DefaultSpeed,
+                    Accel = DefaultAccel,
+                    AccelDelay = DefaultAccelDelay,
+                    FineSpeed = DefaultFineSpeed,
+                    ScrollScale = DefaultScrollScale,
+                    ScrollAccel = DefaultScrollAccel,
+                    ScrollAmount = DefaultScrollAmount,
+                    MouseFilterFrequency = DefaultMouseFilterFrequency,
+                    MouseFilterResonance = DefaultMouseFilterResonance,
+                    InterruptKey = DefaultInterruptKey,
+                    FineModifierKey = DefaultFineModifierKey,
+                    GridKey = "LMenu",
+                    GridKeys = DefaultGridKeys,
+                    Keymap = new Dictionary<string, string>(DefaultKeymap)
                 };
                 var json = JsonConvert.SerializeObject(defaultConfig, Formatting.Indented);
                 File.WriteAllText(configFileName, json);
@@ -523,15 +654,9 @@ namespace Incode
             // without knowing what keys are bound.
             if (_config != null && (_config.Keymap == null || _config.Keymap.Count == 0))
             {
-                _config.Keymap = new Dictionary<string, string>
-                {
-                    ["Up"] = "W", ["Down"] = "S", ["Left"] = "A", ["Right"] = "D",
-                    ["ScrollUp"] = "E", ["ScrollDown"] = "C",
-                    ["LeftDown"] = "Space", ["RightDown"] = "F",
-                    ["ScrollUpAmount"] = "R", ["ScrollDownAmount"] = "V"
-                };
+                _config.Keymap = new Dictionary<string, string>(DefaultKeymap);
                 if (string.IsNullOrEmpty(_config.FineModifierKey))
-                    _config.FineModifierKey = "LShift";
+                    _config.FineModifierKey = DefaultFineModifierKey;
                 var json = JsonConvert.SerializeObject(_config, Formatting.Indented);
                 File.WriteAllText(configFileName, json);
                 MessageBox.Show(
@@ -547,14 +672,39 @@ namespace Incode
                 _config = new ConfigData();
 
             // Ensure defaults for zero values (missing config or parse failure)
-            if (_config.Speed <= 0) _config.Speed = 150;
-            if (_config.Accel < 0) _config.Accel = 0;
-            if (_config.AccelDelay <= 0) _config.AccelDelay = 0.5f;
-            if (_config.FineSpeed <= 0) _config.FineSpeed = 50;
-            if (_config.ScrollScale <= 0) _config.ScrollScale = 30;
-            if (_config.ScrollAmount <= 0) _config.ScrollAmount = 3;
-            if (_config.MouseFilterFrequency <= 0) _config.MouseFilterFrequency = 2000;
-            if (_config.MouseFilterResonance <= 0) _config.MouseFilterResonance = 2.5f;
+            if (_config.Speed <= 0) _config.Speed = DefaultSpeed;
+            if (_config.Accel < 0) _config.Accel = DefaultAccel;
+            if (_config.AccelDelay <= 0) _config.AccelDelay = DefaultAccelDelay;
+            if (_config.FineSpeed <= 0) _config.FineSpeed = DefaultFineSpeed;
+            if (_config.ScrollScale <= 0) _config.ScrollScale = DefaultScrollScale;
+            if (_config.ScrollAmount <= 0) _config.ScrollAmount = DefaultScrollAmount;
+            if (_config.MouseFilterFrequency <= 0) _config.MouseFilterFrequency = DefaultMouseFilterFrequency;
+            if (_config.MouseFilterResonance <= 0) _config.MouseFilterResonance = DefaultMouseFilterResonance;
+
+            // Upgrade: write default values for fields missing in old-version configs
+            bool upgraded = false;
+            if (_config.InterruptKey == null)
+            {
+                _config.InterruptKey = DefaultInterruptKey;
+                upgraded = true;
+            }
+            if (_config.FineModifierKey == null)
+            {
+                _config.FineModifierKey = "";
+                _config.FineSpeed = DefaultFineSpeed;
+                upgraded = true;
+            }
+            if (_config.GridKeys == null)
+            {
+                _config.GridKey = "";
+                _config.GridKeys = DefaultGridKeys;
+                upgraded = true;
+            }
+            if (upgraded)
+            {
+                var json = JsonConvert.SerializeObject(_config, Formatting.Indented);
+                File.WriteAllText(configFileName, json);
+            }
         }
     }
 }

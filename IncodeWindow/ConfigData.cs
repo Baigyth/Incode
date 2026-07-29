@@ -44,5 +44,21 @@
         /// </summary>
         public float FineSpeed { get; set; }
 
+        /// <summary>
+        /// Key that activates Grid (9-cell navigation) mode when held during control mode.
+        /// Keys enum name, e.g. "LMenu" (Left Alt). When null/empty, Grid mode is disabled.
+        /// Set to a Keys enum name (e.g. "LMenu") to enable.
+        /// </summary>
+        public string GridKey { get; set; }
+
+        /// <summary>
+        /// Array of 9 Keys enum names mapped to the 3x3 grid positions in row-major order.
+        /// Index layout: 0=top-left, 1=top-center, 2=top-right,
+        ///               3=middle-left, 4=middle-center, 5=middle-right,
+        ///               6=bottom-left, 7=bottom-center, 8=bottom-right.
+        /// Ignored when GridKey is empty. Defaults to ["Q","W","E","A","S","D","Z","X","C"] when null/empty.
+        /// </summary>
+        public string[] GridKeys { get; set; }
+
     }
 }
