@@ -31,6 +31,18 @@ While in control mode, hold the **Grid key** (default: Left Alt) to enter grid m
 
 Grid key can be configured via `"GridKey"` in `Config.json` (Keys enum name, e.g. `"LMenu"`). Set to `""` to disable.
 
+**Two-level sub-grid navigation (`SubGridEnabled`):**
+
+By default grid mode is single-level — one press jumps to the cell center and that's it. Set `"SubGridEnabled": true` in `Config.json` (default `false`) to enable 2-level nested navigation:
+
+1. Press a grid key → cursor jumps to that cell's center, and the cell is narrowed into its own 3×3 sub-grid.
+2. Press a grid key again → cursor jumps to the sub-cell's center.
+3. Release the Grid key (or the Interrupt key) to exit grid mode; press the Grid key again to restart at the full-screen level.
+
+**On-screen grid HUD (`GridLabelFontSize`):**
+
+When `SubGridEnabled` is `true`, entering grid mode also shows a semi-transparent 3×3 grid overlay that highlights the current cells and their key labels. The font size of the labels is configurable via `"GridLabelFontSize"` (default `48`, in points). The overlay follows the narrowing as you navigate into sub-cells, hides when you exit grid mode, and is click-through (does not intercept the mouse).
+
 **Default grid key mapping (configurable via `GridKeys`):**
 ```
  Q  W  E     ← top row
@@ -132,6 +144,8 @@ All settings in `Config.json` (application directory). Read on startup and on re
   "FineSpeed": 50.0,
   "GridKey": "LMenu",
   "GridKeys": ["Q", "W", "E", "A", "S", "D", "Z", "X", "C"],
+  "SubGridEnabled": false,
+  "GridLabelFontSize": 48,
   "Keymap": {
     "Up": "W",
     "Down": "S",

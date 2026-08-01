@@ -14,6 +14,7 @@ namespace Incode
     using MouseKeyboardActivityMonitor.WinApi;
     using WindowsInput;
     using Newtonsoft.Json;
+    using Newtonsoft.Json.Linq;
 
     /// <summary>
     /// Core engine: hooks, key processing, mouse simulation, config.
@@ -21,6 +22,16 @@ namespace Incode
     /// </summary>
     internal class IncodeEngine : IDisposable
     {
+        /// <summary>
+        /// Grid navigation nesting level.
+        /// </summary>
+        internal enum GridLevel
+        {
+            Inactive,   // Not in grid mode
+            FullScreen, // First level: full-screen 3x3
+            SubCell,    // Second level: sub-grid within selected cell
+        }
+
         public float Speed => _config.Speed;
         public float Accel => _config.Accel;
         public float AccelDelay => _config.AccelDelay;
@@ -70,9 +81,12 @@ namespace Incode
         private LowPass _mx = new LowPass(Frequency, DefaultMouseFilterFrequency, DefaultMouseFilterResonance);
         private LowPass _my = new LowPass(Frequency, DefaultMouseFilterFrequency, DefaultMouseFilterResonance);
         private readonly Dictionary<Keys, Action> _keys = new Dictionary<Keys, Action>();
-        private bool _gridMode;
+        private GridLevel _gridLevel;
+        private Rectangle _gridBounds;
         private Keys _gridActivateKey = Keys.None;
         private readonly Dictionary<Keys, int> _gridPositionMap = new Dictionary<Keys, int>();
+        private bool _subGridEnabled;
+        private GridOverlayForm _gridOverlay;
         private readonly Stopwatch _watch = new Stopwatch();
         private DateTime _controlStartTime;
         private Keys _overrideKey = Keys.RControlKey;
@@ -94,6 +108,8 @@ namespace Incode
         private const float DefaultMouseFilterResonance = 2.5f;
         private const string DefaultInterruptKey = "RControlKey";
         private const string DefaultFineModifierKey = "LShiftKey";
+        private const bool DefaultSubGridEnabled = false;
+        private const float DefaultGridLabelFontSize = 48f;
 
         private static readonly string[] DefaultGridKeys = new[] { "Q", "W", "E", "A", "S", "D", "Z", "X", "C" };
         private static readonly Dictionary<string, string> DefaultKeymap = new Dictionary<string, string>
@@ -129,6 +145,9 @@ namespace Incode
 
             _mouseIn?.Stop();
             _mouseIn?.Dispose();
+
+            _gridOverlay?.Dispose();
+            _gridOverlay = null;
         }
 
         private void Configure()
@@ -208,6 +227,8 @@ namespace Incode
                         _gridPositionMap.Add(key, i);
                 }
             }
+
+            _subGridEnabled = _config.SubGridEnabled;
         }
 
         private void InstallHooks()
@@ -217,6 +238,11 @@ namespace Incode
             _mouseOut = _inputSimulator.Mouse;
             _keyboardOut = _inputSimulator.Keyboard;
 
+            // Thread safety note: MouseKeyboardActivityMonitor routes hook callbacks
+            // through Application.AddMessageFilter, so both OnKeyDown and OnKeyUp
+            // execute on the WinForms UI message-pump thread. Direct Form/control
+            // operations (GridOverlayForm.Show, .Bounds =, .Invalidate) are safe
+            // without Invoke.
             _mouseIn = new MouseHookListener(new GlobalHooker()) { Enabled = true };
             _keyboardIn = new KeyboardHookListener(new GlobalHooker()) { Enabled = true };
 
@@ -344,18 +370,46 @@ namespace Incode
             // GridKey press → enter grid mode
             if (_gridActivateKey != Keys.None && e.KeyCode == _gridActivateKey)
             {
-                _gridMode = true;
+                _gridLevel = GridLevel.FullScreen;
                 _gridKeyDownEaten = e.KeyCode;
+                var screen = Screen.FromPoint(Cursor.Position);
+                _gridBounds = screen.WorkingArea;
+                if (_subGridEnabled)
+                    ShowGridOverlay();
                 Eat(e);
                 return;
             }
 
             // Grid mode active → only grid position keys work; all others blocked
-            if (_gridMode)
+            if (_gridLevel != GridLevel.Inactive)
             {
                 if (_gridPositionMap.TryGetValue(e.KeyCode, out int cellIndex))
                 {
-                    ExecuteGridJump(cellIndex);
+                    if (_subGridEnabled && _gridLevel == GridLevel.FullScreen)
+                    {
+                        // First-level: jump to cell center using current (full screen) bounds,
+                        // then narrow _gridBounds for subsequent sub-cell navigation.
+                        int cellW = _gridBounds.Width / 3;
+                        int cellH = _gridBounds.Height / 3;
+                        int row = cellIndex / 3;
+                        int col = cellIndex % 3;
+
+                        // Jump first with the original bounds
+                        ExecuteGridJump(cellIndex, _gridBounds);
+
+                        // Then narrow bounds for future sub-cell navigation
+                        _gridBounds = new Rectangle(
+                            _gridBounds.Left + col * cellW,
+                            _gridBounds.Top + row * cellH,
+                            cellW, cellH);
+                        _gridLevel = GridLevel.SubCell;
+                        UpdateGridOverlay();
+                    }
+                    else
+                    {
+                        // Sub-cell level (with sub-grid) or original single-level
+                        ExecuteGridJump(cellIndex, _gridBounds);
+                    }
                     Eat(e);
                     return;
                 }
@@ -437,7 +491,8 @@ namespace Incode
                 }
 
                 _fineModifierHeld = false;
-                _gridMode = false;
+                _gridLevel = GridLevel.Inactive;
+                HideGridOverlay();
                 _gridKeyDownEaten = Keys.None;
                 _fineModKeyDownEaten = Keys.None;
                 Controlled = false;
@@ -451,7 +506,8 @@ namespace Incode
             // GridKey release → exit grid mode (only eat if KeyDown was also eaten)
             if (_gridActivateKey != Keys.None && e.KeyCode == _gridActivateKey)
             {
-                _gridMode = false;
+                _gridLevel = GridLevel.Inactive;
+                HideGridOverlay();
                 if (_gridKeyDownEaten == e.KeyCode)
                 {
                     _gridKeyDownEaten = Keys.None;
@@ -535,7 +591,8 @@ namespace Incode
                 kv.Value.Started = DateTime.MinValue;
 
             _fineModifierHeld = false;
-            _gridMode = false;
+            _gridLevel = GridLevel.Inactive;
+            HideGridOverlay();
             _gridKeyDownEaten = Keys.None;
             _fineModKeyDownEaten = Keys.None;
 
@@ -569,22 +626,19 @@ namespace Incode
             ResetMouseFilter();
         }
 
-        private void ExecuteGridJump(int cellIndex)
+        private void ExecuteGridJump(int cellIndex, Rectangle bounds)
         {
-            if (cellIndex < 0 || cellIndex > 8)
+            if (cellIndex < 0 || cellIndex >= 9)
                 return;
 
-            var screen = Screen.FromPoint(Cursor.Position);
-            var area = screen.WorkingArea;
-
-            int cellWidth = area.Width / 3;
-            int cellHeight = area.Height / 3;
+            int cellWidth = bounds.Width / 3;
+            int cellHeight = bounds.Height / 3;
 
             int row = cellIndex / 3;
             int col = cellIndex % 3;
 
-            int centerX = area.Left + col * cellWidth + cellWidth / 2;
-            int centerY = area.Top + row * cellHeight + cellHeight / 2;
+            int centerX = bounds.Left + col * cellWidth + cellWidth / 2;
+            int centerY = bounds.Top + row * cellHeight + cellHeight / 2;
 
             Cursor.Position = new Point(centerX, centerY);
 
@@ -598,6 +652,40 @@ namespace Incode
             Trace("MouseCursor: {0}", Cursor.Position);
             _mx.Set(Cursor.Position.X);
             _my.Set(Cursor.Position.Y);
+        }
+
+        // ── Grid overlay helpers ──────────────────────────────────────────
+
+        private void ShowGridOverlay()
+        {
+            if (_gridOverlay == null || _gridOverlay.IsDisposed)
+            {
+                _gridOverlay = new GridOverlayForm();
+                _gridOverlay.SetFontSize(_config.GridLabelFontSize);
+                _gridOverlay.Show();
+            }
+            else if (!_gridOverlay.Visible)
+            {
+                _gridOverlay.Show();
+            }
+            UpdateGridOverlay();
+        }
+
+        private void UpdateGridOverlay()
+        {
+            if (_gridOverlay != null && !_gridOverlay.IsDisposed && _gridOverlay.Visible)
+            {
+                int level = _gridLevel == GridLevel.SubCell ? 2 : 1;
+                _gridOverlay.UpdateOverlay(_gridBounds, _gridPositionMap, level);
+            }
+        }
+
+        private void HideGridOverlay()
+        {
+            if (_gridOverlay != null && !_gridOverlay.IsDisposed)
+            {
+                _gridOverlay.HideOverlay();
+            }
         }
 
         public void ReadConfig()
@@ -621,6 +709,8 @@ namespace Incode
                     FineModifierKey = DefaultFineModifierKey,
                     GridKey = "LMenu",
                     GridKeys = DefaultGridKeys,
+                    SubGridEnabled = DefaultSubGridEnabled,
+                    GridLabelFontSize = DefaultGridLabelFontSize,
                     Keymap = new Dictionary<string, string>(DefaultKeymap)
                 };
                 var json = JsonConvert.SerializeObject(defaultConfig, Formatting.Indented);
@@ -680,6 +770,7 @@ namespace Incode
             if (_config.ScrollAmount <= 0) _config.ScrollAmount = DefaultScrollAmount;
             if (_config.MouseFilterFrequency <= 0) _config.MouseFilterFrequency = DefaultMouseFilterFrequency;
             if (_config.MouseFilterResonance <= 0) _config.MouseFilterResonance = DefaultMouseFilterResonance;
+            if (_config.GridLabelFontSize <= 0) _config.GridLabelFontSize = DefaultGridLabelFontSize;
 
             // Upgrade: write default values for fields missing in old-version configs
             bool upgraded = false;
@@ -700,6 +791,24 @@ namespace Incode
                 _config.GridKeys = DefaultGridKeys;
                 upgraded = true;
             }
+
+            // SubGridEnabled is a bool — missing in JSON yields default(false) (struct default).
+            // Check raw JSON to distinguish "not present" from "explicitly false".
+            try
+            {
+                var raw = JObject.Parse(text);
+                if (!raw.ContainsKey("SubGridEnabled"))
+                {
+                    _config.SubGridEnabled = DefaultSubGridEnabled;
+                    upgraded = true;
+                }
+
+            }
+            catch (Exception ex)
+            {
+                Trace("Config upgrade: JObject re-parse failed — {0}", ex.Message);
+            }
+
             if (upgraded)
             {
                 var json = JsonConvert.SerializeObject(_config, Formatting.Indented);

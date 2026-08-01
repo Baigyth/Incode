@@ -60,5 +60,19 @@
         /// </summary>
         public string[] GridKeys { get; set; }
 
+        /// <summary>
+        /// When true (default), grid mode supports 2-level nested subdivision:
+        /// pressing a grid key jumps to the corresponding cell, then pressing
+        /// again subdivides that cell into a 3x3 sub-grid.
+        /// When false, the original single-level grid behavior is used.
+        /// </summary>
+        public bool SubGridEnabled { get; set; }
+
+        /// <summary>
+        /// Font size (in points) for the grid overlay cell labels.
+        /// Defaults to 48 if zero or negative.
+        /// </summary>
+        public float GridLabelFontSize { get; set; } = 48f;
+
     }
 }

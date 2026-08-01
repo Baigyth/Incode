@@ -103,6 +103,7 @@
     <Compile Include="IncodeEngine.cs" />
     <Compile Include="IncodeApplicationContext.cs" />
     <Compile Include="LowPass.cs" />
+    <Compile Include="GridOverlayForm.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <EmbeddedResource Include="Properties\Resources.resx">
